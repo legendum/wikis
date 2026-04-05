@@ -9,18 +9,104 @@ import { getFile, listFiles, getPageUpdates } from "../lib/storage";
 import { search } from "../lib/search";
 import { extractBearerToken, validateAccountKey } from "../lib/auth";
 import { getSessionUser } from "./auth";
-import { LEGENDUM_BASE_URL } from "../lib/constants";
+import { CONTENT_TYPE_MARKDOWN_UTF8, LEGENDUM_BASE_URL } from "../lib/constants";
+
+/** Line that starts a typical markdown block (heading, list, quote, table, hr). */
+function looksLikeMarkdownBlockStart(line: string): boolean {
+  const t = line.trimStart();
+  if (/^#{1,6}\s/.test(t)) return true;
+  if (/^[-*+]\s/.test(t)) return true;
+  if (/^\d+\.\s/.test(t)) return true;
+  if (/^>\s/.test(t)) return true;
+  if (/^\|/.test(t)) return true;
+  if (/^([-*_])\s*\1\s*\1\s*$/.test(t.trim())) return true;
+  return false;
+}
+
+/**
+ * Multi-word prose line (common when models end a fence with a blank line then a sentence).
+ * Avoids treating `const x` or single identifiers as prose.
+ */
+function looksLikeProseAfterCodeBlank(line: string): boolean {
+  const t = line.trimStart();
+  if (t.length < 4) return false;
+  if (!/^[A-Za-z]/.test(t)) return false;
+  if (!/\s/.test(t)) return false;
+  if (/^(const|let|var|function|class|import|export|return|if|for|while|switch|case|default|async|await|interface|type|enum|namespace|def|fn|pub|use|mod|struct|trait|impl|package)\b/.test(t)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Extract fenced code blocks. Supports closing ``` and a fallback when models omit it: a blank
+ * line followed by a new markdown block or obvious prose (AI docs often use only a blank line).
+ */
+function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: string[] } {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  const codeBlocks: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const open = lines[i].match(/^```(\w*)\s*$/);
+    if (!open) {
+      out.push(lines[i]);
+      i++;
+      continue;
+    }
+
+    const lang = open[1] ?? "";
+    const openingLine = lines[i];
+    i++;
+
+    const codeLines: string[] = [];
+    let explicitClose = false;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^\s*```\s*$/.test(line)) {
+        explicitClose = true;
+        i++;
+        break;
+      }
+      if (
+        line === "" &&
+        i + 1 < lines.length &&
+        lines[i + 1] !== "" &&
+        codeLines.length > 0
+      ) {
+        const next = lines[i + 1];
+        if (looksLikeMarkdownBlockStart(next) || looksLikeProseAfterCodeBlank(next)) {
+          break;
+        }
+      }
+      codeLines.push(line);
+      i++;
+    }
+
+    const rawCode = codeLines.join("\n");
+    const trimmed = rawCode.trim();
+    if (!trimmed) {
+      out.push(openingLine);
+      for (const cl of codeLines) out.push(cl);
+      if (explicitClose) out.push("```");
+      continue;
+    }
+
+    const idx = codeBlocks.length;
+    codeBlocks.push(`<pre><code class="language-${lang || "text"}">${escapeHtml(trimmed)}</code></pre>`);
+    out.push(`%%CODEBLOCK_${idx}%%`);
+  }
+
+  return { processed: out.join("\n"), codeBlocks };
+}
 
 // Simple markdown → HTML (basic for now — headings, links, code, paragraphs)
 function renderMarkdown(md: string, project?: string): string {
   // Phase 1: extract code blocks into placeholders
-  const codeBlocks: string[] = [];
-  let processed = md.replace(/```(\w*)\n?([\s\S]*?)(?:```|$)/g, (match, lang, code) => {
-    if (!code.trim()) return match;
-    const idx = codeBlocks.length;
-    codeBlocks.push(`<pre><code class="language-${lang || "text"}">${escapeHtml(code.trim())}</code></pre>`);
-    return `\n%%CODEBLOCK_${idx}%%\n`;
-  });
+  const { processed: mdWithoutFences, codeBlocks } = extractFencedCodeBlocks(md);
+  let processed = mdWithoutFences;
 
   // Phase 2: inline formatting
   processed = processed
@@ -376,7 +462,7 @@ async function serveWikiPage(
     if (wantMarkdown) {
       const md = results.map((r) => `- [${r.path}](/${project}/${r.path}): ${r.chunk.slice(0, 100)}...`).join("\n");
       return new Response(`# Search: ${query.q}\n\n${md || "No results."}`, {
-        headers: { "Content-Type": "text/markdown" },
+        headers: { "Content-Type": CONTENT_TYPE_MARKDOWN_UTF8 },
       });
     }
     const html = results
@@ -406,13 +492,13 @@ async function serveWikiPage(
   if (!file || !file.content) {
     set.status = 404;
     if (wantMarkdown) {
-      return new Response("# Not Found\n", { headers: { "Content-Type": "text/markdown" } });
+      return new Response("# Not Found\n", { headers: { "Content-Type": CONTENT_TYPE_MARKDOWN_UTF8 } });
     }
     return new Response(htmlPage("Not Found", notFoundBody("This page doesn't exist yet."), { loggedIn, balance }), { headers: { "Content-Type": "text/html" } });
   }
 
   if (wantMarkdown) {
-    return new Response(file.content, { headers: { "Content-Type": "text/markdown" } });
+    return new Response(file.content, { headers: { "Content-Type": CONTENT_TYPE_MARKDOWN_UTF8 } });
   }
 
   // Render HTML

@@ -10,6 +10,10 @@ export const CONFIG_DIR = resolve(ROOT_DIR, "config");
 export const VIEWS_DIR = resolve(ROOT_DIR, "views");
 export const PUBLIC_DIR = resolve(ROOT_DIR, "public");
 
+/** Content-Type for raw markdown and plain-text HTTP responses. */
+export const CONTENT_TYPE_MARKDOWN_UTF8 = "text/markdown; charset=utf-8";
+export const CONTENT_TYPE_TEXT_UTF8 = "text/plain; charset=utf-8";
+
 // Global user config
 export const USER_CONFIG_DIR = resolve(
   process.env.HOME || "~",
