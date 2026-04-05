@@ -155,7 +155,7 @@ export interface AgentResult {
   usage: { input_tokens: number; output_tokens: number };
 }
 
-const README_PREVIEW_LENGTH = 2048;
+import { PAGE_PREVIEW_LENGTH } from "./constants";
 const RESERVE_CREDITS = 50;
 
 /**
@@ -231,7 +231,7 @@ Keep names short (1–3 words). Descriptions should be one sentence. Choose fewe
         role: "user",
         content: `Propose wiki pages for the "${config.name}" project.
 
-${readme ? `README:\n${readme.slice(0, README_PREVIEW_LENGTH)}\n\n` : ""}Directory tree:
+${readme ? `README:\n${readme.slice(0, PAGE_PREVIEW_LENGTH)}\n\n` : ""}Directory tree:
 ${tree}`,
       },
     ],

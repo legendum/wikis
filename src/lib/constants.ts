@@ -55,6 +55,9 @@ export const OLLAMA_EMBED_MODEL =
   (rawConfig.ollama_embed_model as string) ||
   "all-minilm";
 
+// Content previews
+export const PAGE_PREVIEW_LENGTH = 2048;
+
 // Search tuning
 export const SEARCH_CHUNK_SIZE = Number(rawConfig.search_chunk_size || 512);
 export const SEARCH_CHUNK_OVERLAP = Number(rawConfig.search_chunk_overlap || 64);

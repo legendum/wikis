@@ -10,6 +10,7 @@ import type { ChatMessage } from "./ai";
 import { upsertFile, getFile, listFiles, deleteFile, recordUpdate } from "./storage";
 import { indexFile, removeFile } from "./indexer";
 import { log } from "./log";
+import { PAGE_PREVIEW_LENGTH } from "./constants";
 
 export interface ConsolidateConfig {
   name: string;
@@ -54,7 +55,7 @@ async function planConsolidation(
   const summaries: string[] = [];
   for (const f of files) {
     const content = getFile(db, wikiId, f.path)?.content;
-    const preview = content ? content.slice(0, 200).replace(/\n/g, " ") : "(empty)";
+    const preview = content ? content.slice(0, PAGE_PREVIEW_LENGTH).replace(/\n/g, " ") : "(empty)";
     summaries.push(`- ${f.path}: ${preview}`);
   }
 
@@ -63,7 +64,7 @@ async function planConsolidation(
     messages: [
       {
         role: "system",
-        content: `You review a wiki's page list and identify pages that should be merged (overlapping/redundant content) or removed (empty/useless).
+        content: `Identify wiki pages that overlap in topic and should be merged into one page. If pages are about the same thing, merge them.
 
 Respond with ONLY valid JSON matching this schema:
 {
@@ -78,9 +79,7 @@ Respond with ONLY valid JSON matching this schema:
 Rules:
 - "into" is the page to keep (or a new slug if renaming). "from" pages will be deleted after merging.
 - "redirect" is the page that links to the removed page should point to instead.
-- Only propose merges when pages clearly overlap in topic. Two related pages that cover different aspects should stay separate.
-- If no consolidation is needed, return {"merge":[], "remove":[]}.
-- Be conservative — only merge when there's genuine redundancy.`,
+- If no consolidation is needed, return {"merge":[], "remove":[]}.`,
       },
       {
         role: "user",
