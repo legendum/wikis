@@ -14,7 +14,6 @@ Self-hostable: the same codebase runs at wikis.fyi and locally via `wikis serve`
 - **Search & Discovery**: Full-text search with RAG re-ranking for accurate results
 - **Self-Hostable**: Run the full service locally with your own LLM keys
 - **MCP Integration**: Expose wiki search as a tool for AI agents like Claude Code
-- **Git-Aware**: Tracks changes using Git diffs for efficient updates
 
 ## Quick Start
 

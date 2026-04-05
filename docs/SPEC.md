@@ -129,20 +129,13 @@ The local daemon is a thin client — it watches source files and pushes changes
 
 The daemon checks for source changes on a timer with **exponential backoff**: starting at every **5 minutes**, doubling to a cap of **30 minutes** when no changes are found, resetting to 5 minutes when changes are detected.
 
-**Git-aware diffing:** if the project is a Git repo, the daemon tracks the last commit SHA it synced (stored in `wiki/.last_sync`). On each check it runs `git diff <last_sha> HEAD -- <source globs>` to get a precise, minimal diff. After a successful push, it writes the new HEAD SHA to `wiki/.last_sync`. This means:
-
-- Only changed lines are sent to the server, not whole files
-- Renamed/moved files are detected cleanly
-- Uncommitted changes are ignored — only committed work triggers updates
-- No file watcher needed for source detection (just a periodic `git diff`)
-
-**Fallback (no Git):** if the project is not a Git repo, the daemon falls back to content hashing. It keeps a manifest of `{path: sha256}` in `wiki/.last_sync.json` and diffs against current file contents on each check.
+It tracks which files have changed since the last sync and only sends modified files to the server. This minimizes data transfer and reduces unnecessary LLM calls.
 
 ### Update flow
 
 When source changes are detected:
 
-1. Local daemon diffs the changed source files since last push
+1. Local daemon identifies changed source files
 2. Daemon sends the files to the server via `POST /api/sources`
 3. Server stores whole source files in the `source_files` table (one row per file, not chunked)
 4. Server's agent periodically checks for changed sources and regenerates affected wiki pages
@@ -325,7 +318,7 @@ Same mechanism as depends.cc:
 3. Runs `bun install` for dependencies
 4. Runs `bun link` — reads the `bin` field in `package.json` (`"wikis": "cli/main.ts"`) and symlinks `wikis` into the global PATH
 
-Update with `wikis update` (runs `git pull && bun install` in `~/.config/wikis/src`).
+Update with `wikis update`.
 
 ### One daemon, all projects
 
@@ -344,11 +337,9 @@ A single `wikis` daemon runs per machine. It manages every project that has been
 projects:
   - path: /Volumes/Code/wikis
     name: wikis
-    last_sync_sha: abc123f
     last_check: 2026-04-04T12:00:00Z
   - path: /Volumes/Code/depends
     name: depends
-    last_sync_sha: def456a
     last_check: 2026-04-04T11:55:00Z
 ```
 
@@ -357,7 +348,7 @@ projects:
 `wikis start` forks a background process that manages all registered projects:
 
 1. Iterates through registered projects on the check interval
-2. For each project: detect source changes (git diff or content hash), push diffs if changed
+2. For each project: detect source changes, push changes if needed
 3. Pulls wiki updates from remote for all projects
 4. Exponential backoff per project (5 → 30 min) — active projects are checked more often
 5. Syncs wiki file changes to remote (debounced 2s per project)
@@ -580,17 +571,16 @@ cli/
     search.ts                     -- CLI search via API
     list.ts                       -- list registered projects (stub)
     remove.ts                     -- unregister project (stub)
-    update.ts                     -- update CLI from git
-tests/
-  search/
-    fts5.test.ts                  -- FTS5 indexing, querying, ranking, stemming, boolean ops
-    rag.test.ts                   -- embedding generation, cosine similarity, vector search
-    hybrid.test.ts                -- FTS5 + vector hybrid ranking, fallback behavior
-    chunking.test.ts              -- chunk splitting, overlap, boundary handling
-  sync/
-    manifest.test.ts              -- manifest diffing, push/pull lists, conflict detection
-    conflict.test.ts              -- last-write-wins, .conflict.md generation
-    git.test.ts                   -- git-aware diffing, .last_sync tracking
+    update.ts                     -- update CLI
+  tests/
+    search/
+      fts5.test.ts                  -- FTS5 indexing, querying, ranking, stemming, boolean ops
+      rag.test.ts                   -- embedding generation, cosine similarity, vector search
+      hybrid.test.ts                -- FTS5 + vector hybrid ranking, fallback behavior
+      chunking.test.ts              -- chunk splitting, overlap, boundary handling
+    sync/
+      manifest.test.ts              -- manifest diffing, push/pull lists, conflict detection
+      conflict.test.ts              -- last-write-wins, .conflict.md generation
   agent/
     update.test.ts                -- LLM agent wiki page generation, section enforcement
     ingest.test.ts                -- source diff ingestion, index/log updates
@@ -618,7 +608,7 @@ config/
   nginx.conf                      -- Nginx site config for /etc/nginx/sites-available/
 views/                            -- Eta templates
 public/                           -- static assets
-data/                             -- per-user SQLite DBs + global DB (gitignored)
+data/                             -- per-user SQLite DBs + global DB
 ```
 
 ## Self-hosted
