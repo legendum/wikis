@@ -179,13 +179,11 @@ export function recordEvent(
   wikiId: number | null,
   type: EventType,
   count = 1,
-  description = "",
 ): void {
-  db.prepare("INSERT INTO events (wiki_id, type, count, description) VALUES (?, ?, ?, ?)").run(
+  db.prepare("INSERT INTO events (wiki_id, type, count) VALUES (?, ?, ?)").run(
     wikiId,
     type,
     count,
-    description,
   );
 }
 

@@ -99,7 +99,6 @@ CREATE TABLE IF NOT EXISTS events (
     wiki_id INTEGER REFERENCES wikis(id),
     type TEXT NOT NULL,
     count INTEGER NOT NULL DEFAULT 1,
-    description TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
