@@ -131,7 +131,7 @@ header nav a {
 }
 
 main h1 { font-size: 1.8rem; margin: 1rem 0 0.5rem; display: flex; align-items: center; gap: 0.4rem; }
-main h1 .page-logo { height: 1.2em; }
+main h1 .page-logo { height: 1.2em; width: 1.2em; }
 main h2 { font-size: 1.4rem; margin: 1.5rem 0 0.5rem; border-bottom: 1px solid #e0e0e0; padding-bottom: 0.25rem; }
 main h3 { font-size: 1.1rem; margin: 1rem 0 0.5rem; }
 
