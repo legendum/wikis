@@ -194,32 +194,13 @@ Source content stays on the wikis.fyi server (or the self-hosted instance) — i
 
 ### Search API
 
-Designed to be used by agents (Claude Code, Codex, etc.) and the web UI. Searches wiki pages only (not source files).
-
 | Endpoint | Auth | Description |
 |----------|------|-------------|
 | `GET /api/search/{wiki}?q=...` | Bearer `lak_...` | Search wiki pages — FTS candidates re-ranked by RAG |
 
-Response:
+The same search logic is used by the web UI, CLI, MCP, and API.
 
-```json
-{
-  "ok": true,
-  "data": {
-    "results": [
-      {
-        "path": "architecture.md",
-        "chunk": "The sync protocol uses manifest-based diffing...",
-        "score": 0.87
-      }
-    ]
-  }
-}
-```
-
-The same search logic (FTS + RAG re-ranking) is used by the web UI dropdown, CLI search, and API. If Ollama is unavailable, results fall back to FTS ranking only.
-
-**No data is encrypted at rest** — wiki content and source files are stored as plain text in SQLite. This is intentional: the primary consumers are LLM agents, and encryption would prevent server-side search and RAG from functioning. Access control is handled at the API layer (auth + visibility settings per wiki).
+**No data is encrypted at rest** — wiki content and source files are stored as plain text in SQLite. Access control is handled at the API layer (auth + visibility settings per wiki).
 
 ### MCP server
 
@@ -234,7 +215,7 @@ This makes wikis.fyi a first-class knowledge source for any MCP-capable agent.
 
 ### MCP configuration
 
-`wikis init` generates an MCP config file at `wiki/mcp.json` that agents can reference:
+`wikis init` generates `wiki/mcp.json` with the MCP server config. The URL points to `https://wikis.fyi/mcp` (or `http://localhost:{port}/mcp` for self-hosted). The account key from `~/.config/wikis/config.yml` is included as a bearer token, scoping access to that user's wikis.
 
 ```json
 {
@@ -249,24 +230,6 @@ This makes wikis.fyi a first-class knowledge source for any MCP-capable agent.
   }
 }
 ```
-
-The `lak_...` account key is read from `~/.config/wikis/config.yml` at init time. For self-hosted instances, the URL points to the local server:
-
-```json
-{
-  "mcpServers": {
-    "wikis": {
-      "type": "http",
-      "url": "http://localhost:3000/mcp",
-      "headers": {
-        "Authorization": "Bearer lak_..."
-      }
-    }
-  }
-}
-```
-
-Agents like Claude Code can include this in their MCP config to get `search_wiki`, `read_page`, and `list_pages` as native tools. The account key scopes access to that user's wikis only.
 
 ### What the local daemon does NOT do
 
@@ -432,7 +395,7 @@ Public and private wikis live in separate databases (`data/public.db` vs `data/u
 | `GET /{project}` | Wiki home — rendered index.md |
 | `GET /{project}/{page}` | Wiki page (flat structure, no categories) |
 
-Search is always via `?q=` query param on any level.
+Search is via `?q=` query param — on the homepage (signed in only) or within a specific wiki.
 
 ### API
 
@@ -445,6 +408,7 @@ Search is always via `?q=` query param on any level.
 | `GET /api/wikis` | Bearer `lak_...` | List user's wikis |
 | `DELETE /api/wikis/{name}` | Bearer `lak_...` | Delete a wiki |
 | `GET /api/usage` | Bearer `lak_...` | Current month usage and quota |
+
 ### Tech stack
 
 - **Runtime:** Bun
@@ -720,11 +684,10 @@ Public wikis live at the same URL hierarchy as private ones:
 
 ```
 wikis.fyi/linux                             — Linux kernel wiki
-wikis.fyi/linux/architecture                — category page
-wikis.fyi/linux/architecture/scheduler      — page
+wikis.fyi/linux/architecture                — wiki page
 ```
 
-Public wiki names are reserved — users cannot create private projects with the same name as a public wiki.
+If a user creates a wiki with the same name as a public wiki, their wiki takes priority when they're signed in.
 
 ### No cost to browse
 
