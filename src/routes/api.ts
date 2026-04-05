@@ -121,17 +121,40 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
       changed++;
     }
 
-    // Schedule debounced regeneration if anything changed
+    const wikiPageCount = (
+      db.prepare("SELECT COUNT(*) as c FROM wiki_files WHERE wiki_id = ?").get(wiki.id) as { c: number }
+    ).c;
+    // Sources can match the DB (changed === 0) while no wiki pages exist yet — e.g. first
+    // upload succeeded but the agent never ran, or only source_files were restored.
+    const needsInitialBuild = files.length > 0 && wikiPageCount === 0;
+
+    const { scheduleRegeneration, hasPendingRegeneration } = await import("../lib/regenerator");
+    const dbPath = `user${user.id}`;
+
+    let queuedRegeneration = false;
     if (changed > 0) {
-      const { scheduleRegeneration } = await import("../lib/regenerator");
-      const dbPath = `user${user.id}`;
       scheduleRegeneration(dbPath, db, wiki.id, {
         name: wikiName,
         legendumToken: user.legendum_token,
       });
+      queuedRegeneration = true;
+    } else if (needsInitialBuild && !hasPendingRegeneration(dbPath, wiki.id)) {
+      // Do not reset the debounce on every sync while pages are still missing
+      scheduleRegeneration(dbPath, db, wiki.id, {
+        name: wikiName,
+        legendumToken: user.legendum_token,
+      });
+      queuedRegeneration = true;
     }
 
-    return { ok: true, data: { files: files.length, changed } };
+    return {
+      ok: true,
+      data: {
+        files: files.length,
+        changed,
+        queued_regeneration: queuedRegeneration,
+      },
+    };
   })
 
   // --- Search ---

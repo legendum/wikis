@@ -18,6 +18,7 @@ import {
   getAccountKey,
   getPollInterval,
 } from "./config";
+import { ensureWikiRow } from "./ensure-wiki";
 
 const POLL_INTERVAL = getPollInterval();
 const MAX_BACKOFF = 30 * 60 * 1000; // 30 minutes
@@ -123,6 +124,11 @@ async function syncProject(projectDir: string, config: WikiConfig): Promise<bool
       path,
       content: readFileSync(resolve(projectDir, path), "utf8"),
     }));
+
+    const ensure = await ensureWikiRow(apiUrl, headers, config.name);
+    if (!ensure.ok) {
+      throw new Error(`Could not register wiki on server: ${ensure.error}`);
+    }
 
     const res = await fetch(`${apiUrl}/api/sources`, {
       method: "POST",

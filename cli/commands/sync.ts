@@ -11,6 +11,7 @@ const { parse } = Bun.YAML;
 import { Glob } from "bun";
 import { CryptoHasher } from "bun";
 import { getApiUrl, getAccountKey, readProjects, writeProjects, readHashes, writeHashes } from "../lib/config";
+import { ensureWikiRow } from "../lib/ensure-wiki";
 
 interface WikiConfig {
   name: string;
@@ -62,6 +63,12 @@ async function syncProject(projectDir: string) {
 
   console.log(`  Pushing ${sourceFiles.length} source file(s)…`);
 
+  const ensure = await ensureWikiRow(apiUrl, headers, config.name);
+  if (!ensure.ok) {
+    console.error(`  Could not register wiki on server: ${ensure.error}`);
+    return;
+  }
+
   // Push sources
   const pushRes = await fetch(`${apiUrl}/api/sources`, {
     method: "POST",
@@ -74,12 +81,22 @@ async function syncProject(projectDir: string) {
     return;
   }
 
-  const pushData = (await pushRes.json()) as { ok: boolean; error?: string; data?: { files: number; changed: number } };
+  const pushData = (await pushRes.json()) as {
+    ok: boolean;
+    error?: string;
+    data?: { files: number; changed: number; queued_regeneration?: boolean };
+  };
   if (!pushData.ok) {
     console.error(`  Source push failed: ${pushData.error || "unknown error"}`);
     return;
   }
-  console.log(`  ${pushData.data?.changed || 0} file(s) changed.`);
+  const changed = pushData.data?.changed || 0;
+  const queued = pushData.data?.queued_regeneration;
+  if (changed === 0 && queued) {
+    console.log(`  0 file(s) changed; wiki build queued (no generated pages on the server yet).`);
+  } else {
+    console.log(`  ${changed} file(s) changed.`);
+  }
 
   // Pull wiki pages
   const syncRes = await fetch(`${apiUrl}/api/sync`, {
