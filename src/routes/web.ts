@@ -38,9 +38,18 @@ function looksLikeProseAfterCodeBlank(line: string): boolean {
   return true;
 }
 
+/** Strip the opening fence's indent from each body line (nested / list-indented ``` blocks). */
+function dedentFenceLine(line: string, indent: string): string {
+  if (!indent) return line;
+  if (line === "") return "";
+  if (line.startsWith(indent)) return line.slice(indent.length);
+  return line;
+}
+
 /**
  * Extract fenced code blocks. Supports closing ``` and a fallback when models omit it: a blank
  * line followed by a new markdown block or obvious prose (AI docs often use only a blank line).
+ * Opening fences may be indented (e.g. under list items); body lines are dedented by that amount.
  */
 function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: string[] } {
   const lines = md.split("\n");
@@ -49,18 +58,20 @@ function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: s
   let i = 0;
 
   while (i < lines.length) {
-    const open = lines[i].match(/^```(\w*)\s*$/);
+    const open = lines[i].match(/^(\s*)```(\w*)\s*$/);
     if (!open) {
       out.push(lines[i]);
       i++;
       continue;
     }
 
-    const lang = open[1] ?? "";
+    const fenceIndent = open[1] ?? "";
+    const lang = open[2] ?? "";
     const openingLine = lines[i];
     i++;
 
     const codeLines: string[] = [];
+    const innerRaw: string[] = [];
     let explicitClose = false;
 
     while (i < lines.length) {
@@ -71,9 +82,9 @@ function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: s
         break;
       }
       if (
-        line === "" &&
+        !line.trim() &&
         i + 1 < lines.length &&
-        lines[i + 1] !== "" &&
+        lines[i + 1].trim() !== "" &&
         codeLines.length > 0
       ) {
         const next = lines[i + 1];
@@ -81,7 +92,8 @@ function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: s
           break;
         }
       }
-      codeLines.push(line);
+      innerRaw.push(line);
+      codeLines.push(dedentFenceLine(line, fenceIndent));
       i++;
     }
 
@@ -89,8 +101,8 @@ function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: s
     const trimmed = rawCode.trim();
     if (!trimmed) {
       out.push(openingLine);
-      for (const cl of codeLines) out.push(cl);
-      if (explicitClose) out.push("```");
+      for (const rl of innerRaw) out.push(rl);
+      if (explicitClose) out.push(lines[i - 1]!);
       continue;
     }
 
