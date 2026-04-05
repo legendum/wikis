@@ -49,14 +49,23 @@ header nav .login .icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.4em;
   min-height: 1.4em;
-  padding: 0.1em 0.4em;
   border-radius: 999px;
   background: rgb(88, 176, 209);
   color: white;
+  font-size: 0.9em;
   font-weight: bold;
-  font-size: 0.8em;
+}
+
+header nav .login .icon.circle {
+  width: 1.6em;
+  height: 1.6em;
+  padding: 0;
+}
+
+header nav .login .icon.pill {
+  min-width: 1.4em;
+  padding: 0.1em 0.4em;
 }
 
 
