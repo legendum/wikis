@@ -79,11 +79,18 @@ export async function buildPublicWiki(def: PublicWikiDef): Promise<void> {
 
   log.info(`Collected ${files.length} source files for ${def.name}`);
 
-  // Store source files
+  // Store source files — only update modified_at when content actually changed
   const hashContent = (await import("./storage")).hashContent;
   const now = new Date().toISOString();
+  let changed = 0;
   for (const file of files) {
     const hash = hashContent(file.content);
+    const existing = db.prepare(
+      "SELECT hash FROM source_files WHERE wiki_id = ? AND path = ?"
+    ).get(wiki.id, file.path) as { hash: string } | null;
+
+    if (existing?.hash === hash) continue; // unchanged, skip
+
     db.prepare(`
       INSERT INTO source_files (wiki_id, path, content, hash, modified_at)
       VALUES (?, ?, ?, ?, ?)
@@ -92,8 +99,9 @@ export async function buildPublicWiki(def: PublicWikiDef): Promise<void> {
         hash = excluded.hash,
         modified_at = excluded.modified_at
     `).run(wiki.id, file.path, file.content, hash, now);
+    changed++;
   }
-  log.info(`Stored ${files.length} source files for ${def.name}`);
+  log.info(`Stored ${files.length} source files for ${def.name} (${changed} changed)`);
 
   // Run the wiki agent
   const config: WikiConfig = {

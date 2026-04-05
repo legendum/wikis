@@ -20,7 +20,7 @@ Project files that the LLM reads to build the wiki. Defined as glob patterns in 
 
 ### Sections
 
-Prescriptive top-level categories defined in `wiki/config.yml`. The LLM **must** create and maintain a page for each section. Sections give the wiki a stable skeleton that doesn't drift as content grows.
+Wiki pages are planned by the LLM based on the project's README and source directory tree. The LLM proposes up to 24 pages with short names and descriptions. Sections are no longer hard-coded — the LLM chooses what makes sense for each project. Additional pages are created on demand via the "fill missing links" mechanism when wiki pages reference pages that don't yet exist.
 
 ## Project layout
 
@@ -33,11 +33,10 @@ my-project/
     config.yml                  # wiki configuration
     index.md                    # catalog of all pages (LLM-maintained)
     log.md                      # append-only changelog (LLM-maintained)
-    pages/                      # LLM-generated wiki pages
-      architecture.md
-      api-endpoints.md
-      setup-guide.md
-      ...
+    architecture.md             # LLM-generated wiki pages (flat, no pages/ prefix)
+    api-endpoints.md
+    setup-guide.md
+    ...
 ```
 
 ## Configuration
@@ -61,17 +60,6 @@ exclude:
   - "*.db"
   - .env
   - wiki/**                     # don't read the wiki as a source
-
-# Prescriptive sections — the LLM must create and maintain a page for each
-sections:
-  - name: Architecture
-    description: How the system is designed — components, data flow, key decisions
-  - name: API
-    description: Endpoints, protocols, request/response formats
-  - name: Setup
-    description: Getting started, installation, deployment
-  - name: Configuration
-    description: Environment variables, config files, feature flags
 ```
 
 ### Global: `~/.config/wikis/config.yml`
@@ -155,73 +143,62 @@ The daemon checks for source changes on a timer with **exponential backoff**: st
 When source changes are detected:
 
 1. Local daemon diffs the changed source files since last push
-2. Daemon sends the diffs to the server via `POST /api/sources`
-3. Server ingests the diffs into its RAG index (Ollama `all-minilm` embeddings)
-4. Server's LLM agent reads relevant source chunks + existing wiki pages
+2. Daemon sends the files to the server via `POST /api/sources`
+3. Server stores whole source files in the `source_files` table (one row per file, not chunked)
+4. Server's agent periodically checks for changed sources and regenerates affected wiki pages
 5. LLM agent updates/creates wiki pages, updates `index.md`, appends to `log.md`
 6. Local daemon pulls the updated wiki pages on next sync
 
+### Source storage
+
+Source files are stored whole in the `source_files` table — one row per file with `path`, `content`, `hash`, and `wiki_paths` (comma-separated list of wiki pages this source contributes to). No chunking of sources. The LLM reads full files when generating wiki pages.
+
+### Wiki page generation
+
+1. **First build:** LLM plans sections (up to 24 pages) based on README + directory tree. For each section, LLM picks relevant source files, reads them in full, and writes the page. The mapping from source files to wiki pages is recorded in `source_files.wiki_paths`.
+2. **Subsequent runs:** existing pages are skipped. New pages are added via `fillMissingPages` (scans for broken `.md` links and generates pages for them, recursively up to depth 3).
+3. **On source change:** when a source file's hash changes, the server looks up its `wiki_paths` and regenerates those wiki pages using the same source files. No LLM call needed to re-pick files.
+
 ### Server-side RAG
 
-The server maintains a vector index per wiki using **Ollama embeddings** (default: `all-minilm`, 384-dimensional vectors — configurable via `OLLAMA_EMBED_MODEL` to swap in larger models like `nomic-embed-text` or `mxbai-embed-large` without code changes). Runs locally, no external API calls.
+The server maintains a vector index for **wiki chunks only** using **Ollama embeddings** (default: `all-minilm`, 384-dimensional vectors — configurable via `OLLAMA_EMBED_MODEL`). Runs locally, no external API calls. Source files are not embedded — they are read in full by the LLM agent.
 
-**Two indexes per wiki:**
+### Search strategy: FTS5 candidates, RAG re-ranking
 
-1. **Source index** — chunks from project source files (pushed by the daemon via `POST /api/sources`)
-2. **Wiki index** — chunks from the wiki pages themselves (updated whenever pages are written)
+Search operates on **wiki chunks only** (not source files). Two layers work together:
 
-### Search strategy: FTS5 first, vectors second
-
-SQLite's **FTS5** (Full-Text Search) is the primary search layer. It's built into SQLite, requires no external dependencies, and is extremely fast — sub-millisecond for most queries.
-
-**FTS5 provides:**
+**FTS5** (SQLite Full-Text Search) finds keyword candidates fast:
 - Full-text keyword and phrase search (`"sync protocol"`)
 - Prefix matching (`arch*`)
 - Boolean operators (`sync AND conflict NOT resolution`)
-- BM25 ranking (relevance scoring out of the box)
-- Snippet/highlight extraction
+- Porter stemming (e.g. "syncing" matches "sync")
 
-**Search execution order:**
+**RAG re-ranking** orders those candidates by semantic relevance:
+1. FTS5 query returns top 50 candidates by BM25 score
+2. Query is embedded via Ollama `all-minilm`
+3. Each candidate's stored embedding is compared by cosine similarity
+4. Results are returned sorted by cosine score
 
-1. **FTS5 search** — fast keyword/phrase match with BM25 ranking. Handles the vast majority of queries.
-2. **Vector search** (fallback) — only when FTS5 returns fewer than K results, or when the query is clearly semantic (e.g. "how does the system handle failures" has no exact keyword match). Embeds the query via Ollama `all-minilm`, searches by cosine similarity.
-3. **Hybrid** — when both return results, merge and re-rank by a weighted score: `0.7 * fts5_score + 0.3 * cosine_score`.
-
-This means most searches never touch the embedding model — they complete in microseconds via FTS5.
-
-### Indexing flow (on source push)
-
-1. Receive diffs from the daemon
-2. Re-chunk affected source files (fixed-size chunks with overlap, respecting line boundaries)
-3. Upsert chunks into `source_chunks` table and FTS5 index
-4. Compute embeddings via Ollama `all-minilm` (async, non-blocking — FTS5 is available immediately)
+If Ollama is unavailable (e.g. self-hosted without it), search falls back to FTS5 ranking only. This means the service works without Ollama — RAG improves relevance but isn't required.
 
 ### Indexing flow (on wiki update)
 
 1. After the LLM agent writes/updates wiki pages
 2. Re-chunk the affected pages
 3. Upsert into `wiki_chunks` table and FTS5 index
-4. Compute embeddings async
+4. Compute embeddings via Ollama (async — FTS5 is available immediately)
 
-The FTS5 tables (defined in the per-user database schema) use `porter` tokenizer for stemming (e.g. "syncing" matches "sync") and `unicode61` for international text. They are kept in sync with the content tables via triggers.
+The FTS5 table uses `porter` tokenizer for stemming and `unicode61` for international text, kept in sync with `wiki_chunks` via triggers.
 
-**Query flow (agent or API search):**
-
-1. Run FTS5 `MATCH` query with BM25 ranking
-2. If results < K, fall back to vector cosine similarity
-3. Merge, deduplicate, return top-K with file path and surrounding context
-
-This means the LLM agent cost scales with *what changed*, not the total project size. Source content stays on the wikis.fyi server (or the self-hosted instance) — it is not stored in the wiki itself or exposed to readers.
+Source content stays on the wikis.fyi server (or the self-hosted instance) — it is not stored in the wiki itself or exposed to readers.
 
 ### Search API
 
-Designed to be used by agents (Claude Code, Codex, etc.) and the web UI.
+Designed to be used by agents (Claude Code, Codex, etc.) and the web UI. Searches wiki pages only (not source files).
 
 | Endpoint | Auth | Description |
 |----------|------|-------------|
-| `GET /api/search/{wiki}?q=...` | Bearer `lak_...` | Semantic search across wiki + source chunks |
-| `GET /api/search/{wiki}?q=...&scope=wiki` | Bearer `lak_...` | Search wiki pages only |
-| `GET /api/search/{wiki}?q=...&scope=sources` | Bearer `lak_...` | Search source chunks only |
+| `GET /api/search/{wiki}?q=...` | Bearer `lak_...` | Search wiki pages — FTS candidates re-ranked by RAG |
 
 Response:
 
@@ -231,28 +208,25 @@ Response:
   "data": {
     "results": [
       {
-        "path": "pages/architecture.md",
-        "scope": "wiki",
+        "path": "architecture.md",
         "chunk": "The sync protocol uses manifest-based diffing...",
-        "score": 0.87,
-        "context": {
-          "before": "## Sync\n\n",
-          "after": "\n\nEach file is tracked by content hash."
-        }
+        "score": 0.87
       }
     ]
   }
 }
 ```
 
-**No data is encrypted at rest** — wiki content and source chunks are stored as plain text in SQLite and on disk. This is intentional: the primary consumers are LLM agents, and encryption would prevent server-side search and RAG from functioning. Access control is handled at the API layer (auth + visibility settings per wiki).
+The same search logic (FTS + RAG re-ranking) is used by the web UI dropdown, CLI search, and API. If Ollama is unavailable, results fall back to FTS ranking only.
+
+**No data is encrypted at rest** — wiki content and source files are stored as plain text in SQLite. This is intentional: the primary consumers are LLM agents, and encryption would prevent server-side search and RAG from functioning. Access control is handled at the API layer (auth + visibility settings per wiki).
 
 ### MCP server
 
 The search API is also exposed as an **MCP (Model Context Protocol) server**, so agents like Claude Code can query wikis as a native tool without writing HTTP calls:
 
 **Tools:**
-- `search_wiki` — semantic search across a wiki (params: `wiki`, `query`, `scope?`, `limit?`)
+- `search_wiki` — search across a wiki (params: `wiki`, `query`, `limit?`)
 - `read_page` — read a full wiki page (params: `wiki`, `page`)
 - `list_pages` — list all pages in a wiki (params: `wiki`)
 
@@ -439,10 +413,7 @@ wikis.fyi/                                  — landing page (not signed in) or 
 wikis.fyi/?q=                               — search across all visible projects
 wikis.fyi/{project}                         — project wiki home (index.md)
 wikis.fyi/{project}/?q=                     — search within a project
-wikis.fyi/{project}/{category}              — category page (from prescriptive sections)
-wikis.fyi/{project}/{category}/?q=          — search within a category
-wikis.fyi/{project}/{category}/{page}       — wiki page within a category
-wikis.fyi/{project}/{category}/{sub}/{page} — wiki page within a subcategory (optional nesting)
+wikis.fyi/{project}/{page}                  — wiki page (flat structure)
 ```
 
 **Visibility rules:**
@@ -458,12 +429,8 @@ Public and private wikis occupy separate namespaces — public wikis are system-
 |-------|-------------|
 | `GET /` | Landing page (guest) or private project list (signed in) |
 | `GET /login` | Login with Legendum |
-| `GET /account` | Account overview — projects, usage, linked Legendum account |
-| `GET /pricing` | Pricing and how credits work |
 | `GET /{project}` | Wiki home — rendered index.md |
-| `GET /{project}/{category}` | Category page |
-| `GET /{project}/{category}/{page}` | Wiki page |
-| `GET /{project}/{category}/{sub}/{page}` | Wiki page in subcategory |
+| `GET /{project}/{page}` | Wiki page (flat structure, no categories) |
 
 Search is always via `?q=` query param on any level.
 
@@ -548,7 +515,7 @@ Agents can just `curl wikis.fyi/myproject/architecture.md` and get clean markdow
 - **Physical isolation** — each user's data is a single file, easy to back up, migrate, or shard
 - **Portability** — a user can request their DB and drop it straight into a self-hosted instance
 - **Performance** — FTS5 indexes stay small and fast per user, no cross-user contention on writes
-- **Deletion** — GDPR/account deletion is `rm data/{user_id}.db`
+- **Deletion** — GDPR/account deletion is `rm data/user{id}.db`
 
 A small **global database** (`data/wikis.db`) maps users to their per-user DB:
 
@@ -559,25 +526,26 @@ CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL UNIQUE,
     legendum_token TEXT,                    -- for charging credits
-    db_path TEXT NOT NULL,                  -- e.g. 'data/42.db'
+    db_path TEXT NOT NULL,                  -- e.g. 'data/user42.db'
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
 
-#### Per-user database: `data/{user_id}.db`
+#### Per-user database: `data/user{id}.db`
 
 ```sql
 CREATE TABLE wikis (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
-    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'public')),  -- user wikis are always 'private'; 'public' is for system-managed wikis only
+    description TEXT NOT NULL DEFAULT '',
+    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'public')),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE wiki_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id INTEGER NOT NULL REFERENCES wikis(id),
-    path TEXT NOT NULL,                     -- e.g. 'pages/architecture.md'
+    path TEXT NOT NULL,                     -- e.g. 'architecture.md'
     content TEXT,                           -- file content (remote mode); NULL in self-hosted
     hash TEXT NOT NULL,                     -- content SHA-256
     modified_at TEXT NOT NULL,
@@ -585,23 +553,24 @@ CREATE TABLE wiki_files (
     UNIQUE(wiki_id, path)
 );
 
--- Source chunks for RAG
-CREATE TABLE source_chunks (
+-- Whole source files (not chunked)
+CREATE TABLE source_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id INTEGER NOT NULL REFERENCES wikis(id),
     path TEXT NOT NULL,                     -- source file path (e.g. 'src/server.ts')
-    chunk_index INTEGER NOT NULL,           -- position within file
-    content TEXT NOT NULL,                  -- chunk text
-    embedding BLOB,                         -- float32 vector (dimensions depend on OLLAMA_EMBED_MODEL)
+    content TEXT NOT NULL,                  -- full file content
+    hash TEXT NOT NULL,                     -- content SHA-256
+    wiki_paths TEXT NOT NULL DEFAULT '',    -- comma-separated wiki pages this file contributes to
+    modified_at TEXT NOT NULL DEFAULT (datetime('now')),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(wiki_id, path, chunk_index)
+    UNIQUE(wiki_id, path)
 );
 
--- Wiki page chunks for RAG search
+-- Wiki page chunks for search (FTS + RAG)
 CREATE TABLE wiki_chunks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id INTEGER NOT NULL REFERENCES wikis(id),
-    path TEXT NOT NULL,                     -- wiki page path (e.g. 'pages/architecture.md')
+    path TEXT NOT NULL,                     -- wiki page path (e.g. 'architecture.md')
     chunk_index INTEGER NOT NULL,
     content TEXT NOT NULL,
     embedding BLOB,                         -- float32 vector (dimensions depend on OLLAMA_EMBED_MODEL)
@@ -619,24 +588,15 @@ CREATE TABLE events (
 );
 
 CREATE INDEX idx_wiki_files_wiki ON wiki_files(wiki_id);
-CREATE INDEX idx_source_chunks_wiki ON source_chunks(wiki_id);
-CREATE INDEX idx_source_chunks_path ON source_chunks(wiki_id, path);
+CREATE INDEX idx_source_files_wiki ON source_files(wiki_id);
 CREATE INDEX idx_wiki_chunks_wiki ON wiki_chunks(wiki_id);
 CREATE INDEX idx_wiki_chunks_path ON wiki_chunks(wiki_id, path);
 CREATE INDEX idx_events_period ON events(created_at);
 ```
 
-#### FTS5 tables (in each per-user database)
+#### FTS5 table (in each per-user database)
 
 ```sql
-CREATE VIRTUAL TABLE source_chunks_fts USING fts5(
-    path,
-    content,
-    content=source_chunks,
-    content_rowid=id,
-    tokenize='porter unicode61'
-);
-
 CREATE VIRTUAL TABLE wiki_chunks_fts USING fts5(
     path,
     content,
@@ -657,37 +617,40 @@ CREATE VIRTUAL TABLE wiki_chunks_fts USING fts5(
 ```
 src/
   server.ts                       -- Elysia app setup
+  cli.ts                          -- CLI entry point (bin: "wikis" in package.json)
   routes/
-    web.ts                        -- landing, account, wiki viewer
-    api.ts                        -- sync, push, pull, wikis, usage
+    web.ts                        -- landing, wiki viewer, inline markdown rendering
+    api.ts                        -- sync, push, pull, sources, search, wikis, usage
+    auth.ts                       -- Login with Legendum OAuth flow
   lib/
-    db.ts                         -- SQLite schema and init
-    auth.ts                       -- Legendum auth (OAuth + account keys)
+    db.ts                         -- SQLite schema and init (per-user + public + global DBs)
+    auth.ts                       -- account key validation
     sync.ts                       -- manifest diff, conflict detection
     billing.ts                    -- Legendum charge calls, free quota tracking
-    storage.ts                    -- read/write wiki files on disk
-    render.ts                     -- markdown → HTML rendering
-    search.ts                     -- FTS5 queries, vector fallback, hybrid ranking
-    rag.ts                        -- chunking, Ollama embeddings, cosine similarity
-    agent.ts                      -- LLM agent: queries RAG, updates wiki pages
-    mcp.ts                        -- MCP server: search_wiki, read_page, list_pages
-    config.ts                     -- YAML config loading
+    storage.ts                    -- read/write wiki files in DB
+    search.ts                     -- FTS5 candidates + RAG re-ranking
+    rag.ts                        -- Ollama embeddings, cosine similarity
+    chunking.ts                   -- text chunking for wiki pages
+    indexer.ts                    -- wiki chunk indexing (FTS + embeddings)
+    agent.ts                      -- LLM agent: plans sections, picks files, writes pages
+    public-wikis.ts               -- clone/pull public repos, store sources, run agent
+    ai.ts                         -- LLM chat abstraction (multi-provider)
     log.ts                        -- JSON file logger
+    constants.ts                  -- env vars and config constants
+    legendum.js                   -- Legendum SDK (OAuth, billing, linking)
 cli/
-  wikis.ts                        -- CLI entry point (bin: "wikis" in package.json)
   commands/
     init.ts                       -- scaffold wiki/
-    login.ts                      -- Legendum auth
-    start.ts                      -- daemon launcher
-    stop.ts                       -- daemon killer
-    status.ts                     -- sync state reporter
-    sync.ts                       -- one-shot sync
+    login.ts                      -- Legendum auth (stub)
+    start.ts                      -- daemon launcher (stub)
+    stop.ts                       -- daemon killer (stub)
+    status.ts                     -- sync state reporter (stub)
+    sync.ts                       -- one-shot sync (stub)
     serve.ts                      -- local server
-  lib/
-    daemon.ts                     -- background process management
-    watcher.ts                    -- file system watcher (wiki + sources)
-    syncer.ts                     -- sync client (manifest, push, pull, sources)
-    config.ts                     -- global + per-wiki config loading
+    search.ts                     -- CLI search via API
+    list.ts                       -- list registered projects (stub)
+    remove.ts                     -- unregister project (stub)
+    update.ts                     -- update CLI from git
 tests/
   search/
     fts5.test.ts                  -- FTS5 indexing, querying, ranking, stemming, boolean ops

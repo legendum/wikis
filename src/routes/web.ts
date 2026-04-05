@@ -5,63 +5,157 @@
 import { Elysia } from "elysia";
 import { getPublicDb, getUserDb } from "../lib/db";
 import { getFile, listFiles } from "../lib/storage";
-import { searchFts } from "../lib/search";
+import { search } from "../lib/search";
 import { extractBearerToken, validateAccountKey } from "../lib/auth";
 import { getSessionUser } from "./auth";
 import { LEGENDUM_BASE_URL } from "../lib/constants";
 
 // Simple markdown → HTML (basic for now — headings, links, code, paragraphs)
 function renderMarkdown(md: string, project?: string): string {
-  // Phase 1: extract code blocks into placeholders (before any other processing)
-  // Match both closed (```...```) and unclosed (```...EOF) fences
+  // Phase 1: extract code blocks into placeholders
   const codeBlocks: string[] = [];
   let processed = md.replace(/```(\w*)\n?([\s\S]*?)(?:```|$)/g, (match, lang, code) => {
-    // Skip if this doesn't look like a real code fence (no content)
     if (!code.trim()) return match;
     const idx = codeBlocks.length;
     codeBlocks.push(`<pre><code class="language-${lang || "text"}">${escapeHtml(code.trim())}</code></pre>`);
     return `\n%%CODEBLOCK_${idx}%%\n`;
   });
 
+  // Phase 2: inline formatting
   processed = processed
-    // Inline code
     .replace(/`([^`]+)`/g, "<code>$1</code>")
-    // Headings
+    .replace(/^#### (.+)$/gm, "<h4>$1</h4>")
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")
     .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    // Bold
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    // Italic
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    // Wiki .md links — foo.md → /{project}/foo
+    // Images (before links so ![...](...) isn't caught by link regex)
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
+    // Wiki .md links
     .replace(/\[([^\]]+)\]\(([^/)][^)]*?)\.md\)/g, (_, text, slug) =>
       `<a href="/${project || ""}/${slug}">${text}</a>`)
-    // External links (already absolute)
+    // External links
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2">$1</a>')
-    // List items
-    .replace(/^- (.+)$/gm, "<li>$1</li>")
-    .replace(/(<li>.*<\/li>\n?)+/g, "<ul>$&</ul>")
-    // Tables
-    .replace(/^(\|.+\|)\n\|[-| :]+\|\n((?:\|.+\|\n?)+)/gm, (_, headerRow, bodyRows) => {
-      const headers = headerRow.split("|").filter(Boolean).map((h: string) => `<th>${h.trim()}</th>`).join("");
-      const rows = bodyRows.trim().split("\n").map((row: string) => {
-        const cells = row.split("|").filter(Boolean).map((c: string) => `<td>${c.trim()}</td>`).join("");
-        return `<tr>${cells}</tr>`;
-      }).join("");
-      return `<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
-    })
-    // Paragraphs (lines not already wrapped, not placeholders, not table tags)
-    .replace(/^(?!<[huplo\t])(?!%%CODEBLOCK)(.*\S.*)$/gm, "<p>$1</p>")
-    // Horizontal rules
     .replace(/^---$/gm, "<hr>");
 
-  // Phase 2: restore code blocks
-  for (let i = 0; i < codeBlocks.length; i++) {
-    processed = processed.replace(`%%CODEBLOCK_${i}%%`, codeBlocks[i]);
+  // Phase 3: block-level elements (line by line)
+  const lines = processed.split("\n");
+  const out: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Code block placeholder — pass through
+    if (line.trim().startsWith("%%CODEBLOCK_")) {
+      out.push(line);
+      i++;
+      continue;
+    }
+
+    // Already-processed HTML tags — pass through
+    if (/^<(h[1-4]|hr|pre|table|img)/.test(line.trim())) {
+      out.push(line);
+      i++;
+      continue;
+    }
+
+    // Blockquotes
+    if (/^> /.test(line)) {
+      const bqLines: string[] = [];
+      while (i < lines.length && /^> ?/.test(lines[i])) {
+        bqLines.push(lines[i].replace(/^> ?/, ""));
+        i++;
+      }
+      out.push(`<blockquote>${bqLines.join("<br>")}</blockquote>`);
+      continue;
+    }
+
+    // Tables
+    if (line.startsWith("|") && i + 1 < lines.length && /^\|[-| :]+\|$/.test(lines[i + 1])) {
+      const headers = line.split("|").filter(Boolean).map((h: string) => `<th>${h.trim()}</th>`).join("");
+      i += 2; // skip header + separator
+      const rows: string[] = [];
+      while (i < lines.length && lines[i].startsWith("|")) {
+        const cells = lines[i].split("|").filter(Boolean).map((c: string) => `<td>${c.trim()}</td>`).join("");
+        rows.push(`<tr>${cells}</tr>`);
+        i++;
+      }
+      out.push(`<table><thead><tr>${headers}</tr></thead><tbody>${rows.join("")}</tbody></table>`);
+      continue;
+    }
+
+    // Unordered lists (with nesting)
+    if (/^( *)- /.test(line)) {
+      out.push(renderList(lines, i, "ul"));
+      while (i < lines.length && /^( *)- /.test(lines[i])) i++;
+      continue;
+    }
+
+    // Ordered lists (with nesting)
+    if (/^( *)\d+\. /.test(line)) {
+      out.push(renderList(lines, i, "ol"));
+      while (i < lines.length && /^( *)\d+\. /.test(lines[i])) i++;
+      continue;
+    }
+
+    // Paragraph — non-empty lines not already handled
+    if (line.trim()) {
+      out.push(`<p>${line.trim()}</p>`);
+    }
+    i++;
+  }
+
+  processed = out.join("\n");
+
+  // Phase 4: restore code blocks
+  for (let j = 0; j < codeBlocks.length; j++) {
+    processed = processed.replace(`%%CODEBLOCK_${j}%%`, codeBlocks[j]);
   }
 
   return processed;
+}
+
+/** Render a nested list (ul or ol) starting at the given line index. */
+function renderList(lines: string[], start: number, tag: "ul" | "ol"): string {
+  const pattern = tag === "ul" ? /^( *)- (.+)$/ : /^( *)\d+\. (.+)$/;
+  const items: { indent: number; text: string }[] = [];
+
+  let i = start;
+  while (i < lines.length) {
+    const m = lines[i].match(pattern);
+    if (!m) break;
+    items.push({ indent: m[1].length, text: m[2] });
+    i++;
+  }
+
+  function build(items: { indent: number; text: string }[], idx: number, baseIndent: number): { html: string; next: number } {
+    let html = `<${tag}>`;
+    let j = idx;
+    while (j < items.length && items[j].indent >= baseIndent) {
+      if (items[j].indent === baseIndent) {
+        html += `<li>${items[j].text}`;
+        j++;
+        // Check for nested items
+        if (j < items.length && items[j].indent > baseIndent) {
+          const nested = build(items, j, items[j].indent);
+          html += nested.html;
+          j = nested.next;
+        }
+        html += `</li>`;
+      } else {
+        // Shouldn't happen, but handle gracefully
+        const nested = build(items, j, items[j].indent);
+        html += nested.html;
+        j = nested.next;
+      }
+    }
+    html += `</${tag}>`;
+    return { html, next: j };
+  }
+
+  return build(items, 0, items[0]?.indent ?? 0).html;
 }
 
 interface PageOpts {
@@ -122,7 +216,7 @@ function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
             if (ul) { box.innerHTML = ul.outerHTML; box.hidden = false; }
             else { box.hidden = true; }
           });
-      }, 300);
+      }, 500);
     });
     input.addEventListener('keydown', function(e){
       if (e.key === 'Escape') { box.hidden = true; input.blur(); }
@@ -139,7 +233,7 @@ function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
 export const webRoutes = new Elysia()
 
   // Landing page — alphabetical wiki index
-  .get("/", ({ headers, query }) => {
+  .get("/", async ({ headers, query }) => {
     const user = resolveUser(headers);
 
     // Signed in: show user's private wikis
@@ -154,7 +248,7 @@ export const webRoutes = new Elysia()
       for (const w of wikis) {
         const wikiRow = db.prepare("SELECT id FROM wikis WHERE name = ?").get(w.name) as { id: number } | null;
         if (!wikiRow) continue;
-        const results = searchFts(db, query.q, { limit: 10 });
+        const results = await search(db, wikiRow.id, query.q, { limit: 10 });
         for (const r of results) {
           const slug = r.path.replace(/\.md$/, "");
           const title = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -198,7 +292,7 @@ export const webRoutes = new Elysia()
     return serveWikiPage(params.project, rest, query, headers, set);
   });
 
-function serveWikiPage(
+async function serveWikiPage(
   project: string,
   rawPath: string,
   query: Record<string, string>,
@@ -232,7 +326,7 @@ function serveWikiPage(
 
   // Handle search
   if (query.q) {
-    const results = searchFts(db, query.q, { limit: 20 });
+    const results = await search(db, wiki.id, query.q, { limit: 20 });
     if (wantMarkdown) {
       const md = results.map((r) => `- [${r.path}](/${project}/${r.path}): ${r.chunk.slice(0, 100)}...`).join("\n");
       return new Response(`# Search: ${query.q}\n\n${md || "No results."}`, {
@@ -278,7 +372,7 @@ function serveWikiPage(
   // Render HTML
   const pageSlug = file.path.replace(".md", "");
   const pageTitle = pageSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  const projectTitle = project.replace(/\b\w/g, (c) => c.toUpperCase());
+  const projectTitle = project.charAt(0).toUpperCase() + project.slice(1);
   const isIndex = file.path === "index.md";
   const nav = isIndex
     ? ` / <strong>${projectTitle}</strong>`

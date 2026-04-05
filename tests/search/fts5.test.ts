@@ -2,26 +2,16 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { resolve } from "path";
 import { createTestDataDir } from "../helpers/db";
-import { searchFts } from "../../src/lib/search";
+import { search } from "../../src/lib/search";
 import { indexFile } from "../../src/lib/indexer";
 
-// Minimal schema for search tests
+// Minimal schema for search tests — wiki chunks only
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS wikis (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     visibility TEXT NOT NULL DEFAULT 'private',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS source_chunks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    wiki_id INTEGER NOT NULL REFERENCES wikis(id),
-    path TEXT NOT NULL,
-    chunk_index INTEGER NOT NULL,
-    content TEXT NOT NULL,
-    embedding BLOB,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(wiki_id, path, chunk_index)
 );
 CREATE TABLE IF NOT EXISTS wiki_chunks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,22 +23,9 @@ CREATE TABLE IF NOT EXISTS wiki_chunks (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(wiki_id, path, chunk_index)
 );
-CREATE VIRTUAL TABLE IF NOT EXISTS source_chunks_fts USING fts5(
-    path, content, content=source_chunks, content_rowid=id, tokenize='porter unicode61'
-);
 CREATE VIRTUAL TABLE IF NOT EXISTS wiki_chunks_fts USING fts5(
     path, content, content=wiki_chunks, content_rowid=id, tokenize='porter unicode61'
 );
-CREATE TRIGGER IF NOT EXISTS source_chunks_ai AFTER INSERT ON source_chunks BEGIN
-    INSERT INTO source_chunks_fts(rowid, path, content) VALUES (new.id, new.path, new.content);
-END;
-CREATE TRIGGER IF NOT EXISTS source_chunks_ad AFTER DELETE ON source_chunks BEGIN
-    INSERT INTO source_chunks_fts(source_chunks_fts, rowid, path, content) VALUES ('delete', old.id, old.path, old.content);
-END;
-CREATE TRIGGER IF NOT EXISTS source_chunks_au AFTER UPDATE ON source_chunks BEGIN
-    INSERT INTO source_chunks_fts(source_chunks_fts, rowid, path, content) VALUES ('delete', old.id, old.path, old.content);
-    INSERT INTO source_chunks_fts(rowid, path, content) VALUES (new.id, new.path, new.content);
-END;
 CREATE TRIGGER IF NOT EXISTS wiki_chunks_ai AFTER INSERT ON wiki_chunks BEGIN
     INSERT INTO wiki_chunks_fts(rowid, path, content) VALUES (new.id, new.path, new.content);
 END;
@@ -61,7 +38,7 @@ CREATE TRIGGER IF NOT EXISTS wiki_chunks_au AFTER UPDATE ON wiki_chunks BEGIN
 END;
 `;
 
-describe("FTS5 search via indexer", () => {
+describe("Search (FTS + RAG re-rank)", () => {
   let tmp: { dir: string; cleanup: () => void };
   let db: Database;
   let wikiId: number;
@@ -76,19 +53,13 @@ describe("FTS5 search via indexer", () => {
     db.prepare("INSERT INTO wikis (name) VALUES (?)").run("test-project");
     wikiId = (db.prepare("SELECT id FROM wikis WHERE name = 'test-project'").get() as { id: number }).id;
 
-    // Index some source files
-    await indexFile(db, wikiId, "source_chunks", "src/server.ts",
-      "Elysia app setup with route registration and middleware configuration", { embeddings: false });
-    await indexFile(db, wikiId, "source_chunks", "src/lib/sync.ts",
-      "Bidirectional sync protocol with manifest-based diffing and conflict resolution", { embeddings: false });
-    await indexFile(db, wikiId, "source_chunks", "src/lib/db.ts",
-      "SQLite database initialization with WAL mode and FTS5 full-text search indexes", { embeddings: false });
-
-    // Index some wiki pages
-    await indexFile(db, wikiId, "wiki_chunks", "pages/architecture.md",
+    // Index wiki pages (no embeddings — Ollama likely not running in tests)
+    await indexFile(db, wikiId, "wiki_chunks", "architecture.md",
       "The system uses Elysia on Bun for the web server with SQLite for persistence", { embeddings: false });
-    await indexFile(db, wikiId, "wiki_chunks", "pages/sync.md",
+    await indexFile(db, wikiId, "wiki_chunks", "sync.md",
       "Sync uses a manifest-based protocol with last-write-wins conflict resolution", { embeddings: false });
+    await indexFile(db, wikiId, "wiki_chunks", "setup.md",
+      "Install Bun and run bun install to set up dependencies", { embeddings: false });
   });
 
   afterEach(() => {
@@ -96,52 +67,55 @@ describe("FTS5 search via indexer", () => {
     tmp.cleanup();
   });
 
-  it("finds source chunks by keyword", () => {
-    const results = searchFts(db, "elysia", { scope: "sources" });
+  it("finds wiki pages by keyword", async () => {
+    const results = await search(db, wikiId, "elysia");
     expect(results.length).toBeGreaterThan(0);
-    expect(results[0].path).toBe("src/server.ts");
-    expect(results[0].scope).toBe("sources");
+    expect(results[0].path).toBe("architecture.md");
   });
 
-  it("finds wiki chunks by keyword", () => {
-    const results = searchFts(db, "manifest", { scope: "wiki" });
+  it("finds by different keyword", async () => {
+    const results = await search(db, wikiId, "manifest");
     expect(results.length).toBeGreaterThan(0);
-    expect(results[0].path).toBe("pages/sync.md");
-    expect(results[0].scope).toBe("wiki");
+    expect(results[0].path).toBe("sync.md");
   });
 
-  it("searches both scopes by default", () => {
-    const results = searchFts(db, "elysia");
-    const scopes = new Set(results.map((r) => r.scope));
-    expect(scopes.has("sources")).toBe(true);
-    expect(scopes.has("wiki")).toBe(true);
-  });
-
-  it("returns empty for no match", () => {
-    const results = searchFts(db, "nonexistent_term_xyz");
+  it("returns empty for no match", async () => {
+    const results = await search(db, wikiId, "nonexistent_term_xyz");
     expect(results).toHaveLength(0);
   });
 
-  it("supports stemming (sync matches syncing)", () => {
-    // "sync" should match content containing "Sync"
-    const results = searchFts(db, "syncing", { scope: "sources" });
+  it("supports stemming (sync matches syncing)", async () => {
+    const results = await search(db, wikiId, "syncing");
     expect(results.length).toBeGreaterThan(0);
-    expect(results.some((r) => r.path === "src/lib/sync.ts")).toBe(true);
+    expect(results.some((r) => r.path === "sync.md")).toBe(true);
   });
 
   it("re-indexes a file on update", async () => {
-    await indexFile(db, wikiId, "source_chunks", "src/server.ts",
+    await indexFile(db, wikiId, "wiki_chunks", "architecture.md",
       "Completely new content about authentication and sessions", { embeddings: false });
 
-    const oldResults = searchFts(db, "elysia", { scope: "sources" });
-    const newResults = searchFts(db, "authentication", { scope: "sources" });
+    const oldResults = await search(db, wikiId, "elysia");
+    const newResults = await search(db, wikiId, "authentication");
 
-    expect(oldResults.filter((r) => r.path === "src/server.ts")).toHaveLength(0);
-    expect(newResults.filter((r) => r.path === "src/server.ts")).toHaveLength(1);
+    expect(oldResults.filter((r) => r.path === "architecture.md")).toHaveLength(0);
+    expect(newResults.filter((r) => r.path === "architecture.md")).toHaveLength(1);
   });
 
-  it("respects limit", () => {
-    const results = searchFts(db, "sync OR sqlite OR elysia", { limit: 2 });
+  it("respects limit", async () => {
+    const results = await search(db, wikiId, "sync OR sqlite OR elysia", { limit: 2 });
     expect(results.length).toBeLessThanOrEqual(2);
+  });
+
+  it("returns results with scores", async () => {
+    const results = await search(db, wikiId, "manifest");
+    expect(results.length).toBeGreaterThan(0);
+    expect(typeof results[0].score).toBe("number");
+  });
+
+  it("gracefully handles no Ollama (FTS-only fallback)", async () => {
+    // Without Ollama running, search should still work via FTS
+    const results = await search(db, wikiId, "dependencies");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].path).toBe("setup.md");
   });
 });

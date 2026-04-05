@@ -84,7 +84,8 @@ function normalizeFtsRank(rank: number, maxRank: number): number {
 }
 
 /**
- * Search wiki — FTS5 first, vector fallback, hybrid merge.
+ * Search wiki — FTS5 for candidates, re-ranked by vector similarity.
+ * FTS finds keyword matches fast, RAG orders them by semantic relevance.
  */
 export async function search(
   db: Database,
@@ -93,58 +94,49 @@ export async function search(
   opts: { limit?: number } = {}
 ): Promise<SearchResult[]> {
   const limit = opts.limit ?? SEARCH_DEFAULT_LIMIT;
+  const FTS_CANDIDATES = 50;
 
-  const results: SearchResult[] = ftsSearch(db, query, limit).map((row) => ({
-    path: row.path,
-    chunk: row.content,
-    score: row.rank,
-  }));
+  // Step 1: FTS candidates
+  const ftsResults = ftsSearch(db, query, FTS_CANDIDATES);
+  if (ftsResults.length === 0) return [];
 
-  if (results.length >= limit) {
-    const worst = Math.min(...results.map((r) => r.score));
-    for (const r of results) r.score = normalizeFtsRank(r.score, worst);
-    return results.sort((a, b) => b.score - a.score).slice(0, limit);
-  }
-
-  // Vector fallback
-  let queryEmbedding: Float32Array;
+  // Step 2: embed the query and re-rank by cosine similarity
+  let queryEmbedding: Float32Array | null = null;
   try {
     queryEmbedding = await embedOne(query);
   } catch {
-    const worst = Math.min(...results.map((r) => r.score), -1);
-    for (const r of results) r.score = normalizeFtsRank(r.score, worst);
-    return results.sort((a, b) => b.score - a.score).slice(0, limit);
+    // Ollama unavailable — fall back to FTS rank order
   }
 
-  const ftsKeys = new Set(results.map((r) => `${r.path}:${r.chunk.slice(0, 50)}`));
+  if (!queryEmbedding) {
+    // FTS-only fallback
+    const worst = Math.min(...ftsResults.map((r) => r.rank));
+    return ftsResults.map((row) => ({
+      path: row.path,
+      chunk: row.content,
+      score: normalizeFtsRank(row.rank, worst),
+    })).sort((a, b) => b.score - a.score).slice(0, limit);
+  }
 
-  for (const v of vectorSearch(db, wikiId, queryEmbedding, limit)) {
-    const key = `${v.path}:${v.content.slice(0, 50)}`;
-    if (!ftsKeys.has(key)) {
-      results.push({ path: v.path, chunk: v.content, score: v.score * SEARCH_VECTOR_WEIGHT });
+  // Look up embeddings for the FTS candidate chunks
+  const results: SearchResult[] = [];
+  for (const row of ftsResults) {
+    const chunkRow = db.prepare(
+      "SELECT embedding FROM wiki_chunks WHERE wiki_id = ? AND path = ? AND content = ? AND embedding IS NOT NULL LIMIT 1"
+    ).get(wikiId, row.path, row.content) as { embedding: Buffer } | null;
+
+    let score: number;
+    if (chunkRow?.embedding) {
+      score = cosineSimilarity(queryEmbedding, deserializeEmbedding(chunkRow.embedding));
+    } else {
+      // No embedding for this chunk — use normalized FTS rank
+      const worst = Math.min(...ftsResults.map((r) => r.rank));
+      score = normalizeFtsRank(row.rank, worst) * 0.5; // demote unembedded results
     }
-  }
 
-  const worst = Math.min(...results.filter((r) => r.score < 0).map((r) => r.score), -1);
-  for (const r of results) {
-    if (r.score < 0) r.score = normalizeFtsRank(r.score, worst) * SEARCH_FTS_WEIGHT;
+    results.push({ path: row.path, chunk: row.content, score });
   }
 
   return results.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
-/**
- * FTS-only search — no vector fallback. Fastest path.
- */
-export function searchFts(
-  db: Database,
-  query: string,
-  opts: { limit?: number } = {}
-): SearchResult[] {
-  const limit = opts.limit ?? SEARCH_DEFAULT_LIMIT;
-  return ftsSearch(db, query, limit).map((row) => ({
-    path: row.path,
-    chunk: row.content,
-    score: row.rank,
-  })).sort((a, b) => a.score - b.score).slice(0, limit);
-}

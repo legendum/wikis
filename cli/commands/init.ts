@@ -6,14 +6,6 @@ const DEFAULT_CONFIG = {
   name: "",
   sources: ["src/**/*", "docs/**/*", "config/**/*", "README.md"],
   exclude: ["node_modules/**", "*.db", ".env", "wiki/**"],
-  sections: [
-    { name: "Overview", description: "What this project does and why" },
-    {
-      name: "Architecture",
-      description: "How the system is designed — components, data flow, key decisions",
-    },
-    { name: "Setup", description: "Getting started, installation, deployment" },
-  ],
 };
 
 export default async function init(_args: string[]) {

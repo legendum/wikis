@@ -237,21 +237,34 @@ export async function runAgent(
     usage: { input_tokens: 0, output_tokens: 0 },
   };
 
-  // Plan sections if not provided
+  // Plan sections if not provided — but skip if wiki already has pages
   let sections = config.sections;
   if (!sections || sections.length === 0) {
-    try {
-      const plan = await planSections(db, wikiId, config);
-      sections = plan.sections;
-      result.usage.input_tokens += plan.usage.input_tokens;
-      result.usage.output_tokens += plan.usage.output_tokens;
-    } catch (e) {
-      log.error("Section planning failed, using defaults", { wiki: config.name, error: (e as Error).message });
-      sections = [
-        { name: "Overview", description: "What this project does, its purpose, and key features" },
-        { name: "Architecture", description: "How the system is designed — components, data flow, key decisions" },
-        { name: "Getting Started", description: "Installation, setup, and configuration" },
-      ];
+    const SPECIAL = new Set(["index.md", "log.md"]);
+    const existingPages = listFiles(db, wikiId).filter(
+      (f) => f.path.endsWith(".md") && !SPECIAL.has(f.path)
+    );
+    if (existingPages.length > 0) {
+      // Wiki already has pages — no need to re-plan
+      log.info(`${config.name}: ${existingPages.length} pages already exist, skipping section planning`, { wiki: config.name });
+      sections = existingPages.map((f) => {
+        const name = f.path.replace(/\.md$/, "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        return { name, description: "" };
+      });
+    } else {
+      try {
+        const plan = await planSections(db, wikiId, config);
+        sections = plan.sections;
+        result.usage.input_tokens += plan.usage.input_tokens;
+        result.usage.output_tokens += plan.usage.output_tokens;
+      } catch (e) {
+        log.error("Section planning failed, using defaults", { wiki: config.name, error: (e as Error).message });
+        sections = [
+          { name: "Overview", description: "What this project does, its purpose, and key features" },
+          { name: "Architecture", description: "How the system is designed — components, data flow, key decisions" },
+          { name: "Getting Started", description: "Installation, setup, and configuration" },
+        ];
+      }
     }
   }
 

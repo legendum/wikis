@@ -11,6 +11,7 @@ const USER_SCHEMA = `
 CREATE TABLE IF NOT EXISTS wikis (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
     visibility TEXT NOT NULL DEFAULT 'private'
         CHECK (visibility IN ('private', 'public')),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -22,20 +23,22 @@ CREATE TABLE IF NOT EXISTS wiki_files (
     path TEXT NOT NULL,
     content TEXT,
     hash TEXT NOT NULL,
+    source_hash TEXT,
     modified_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(wiki_id, path)
 );
 
-CREATE TABLE IF NOT EXISTS source_chunks (
+CREATE TABLE IF NOT EXISTS source_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id INTEGER NOT NULL REFERENCES wikis(id),
     path TEXT NOT NULL,
-    chunk_index INTEGER NOT NULL,
     content TEXT NOT NULL,
-    embedding BLOB,
+    hash TEXT NOT NULL,
+    wiki_paths TEXT NOT NULL DEFAULT '',
+    modified_at TEXT NOT NULL DEFAULT (datetime('now')),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(wiki_id, path, chunk_index)
+    UNIQUE(wiki_id, path)
 );
 
 CREATE TABLE IF NOT EXISTS wiki_chunks (
@@ -59,11 +62,6 @@ CREATE TABLE IF NOT EXISTS events (
 `;
 
 const FTS_SCHEMA = `
-CREATE VIRTUAL TABLE IF NOT EXISTS source_chunks_fts USING fts5(
-    path, content,
-    content=source_chunks, content_rowid=id,
-    tokenize='porter unicode61'
-);
 CREATE VIRTUAL TABLE IF NOT EXISTS wiki_chunks_fts USING fts5(
     path, content,
     content=wiki_chunks, content_rowid=id,
@@ -72,16 +70,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS wiki_chunks_fts USING fts5(
 `;
 
 const FTS_TRIGGERS = `
-CREATE TRIGGER IF NOT EXISTS source_chunks_ai AFTER INSERT ON source_chunks BEGIN
-    INSERT INTO source_chunks_fts(rowid, path, content) VALUES (new.id, new.path, new.content);
-END;
-CREATE TRIGGER IF NOT EXISTS source_chunks_ad AFTER DELETE ON source_chunks BEGIN
-    INSERT INTO source_chunks_fts(source_chunks_fts, rowid, path, content) VALUES ('delete', old.id, old.path, old.content);
-END;
-CREATE TRIGGER IF NOT EXISTS source_chunks_au AFTER UPDATE ON source_chunks BEGIN
-    INSERT INTO source_chunks_fts(source_chunks_fts, rowid, path, content) VALUES ('delete', old.id, old.path, old.content);
-    INSERT INTO source_chunks_fts(rowid, path, content) VALUES (new.id, new.path, new.content);
-END;
 CREATE TRIGGER IF NOT EXISTS wiki_chunks_ai AFTER INSERT ON wiki_chunks BEGIN
     INSERT INTO wiki_chunks_fts(rowid, path, content) VALUES (new.id, new.path, new.content);
 END;
@@ -126,7 +114,7 @@ describe("per-user database", () => {
 
     expect(names).toContain("wikis");
     expect(names).toContain("wiki_files");
-    expect(names).toContain("source_chunks");
+    expect(names).toContain("source_files");
     expect(names).toContain("wiki_chunks");
     expect(names).toContain("events");
   });
@@ -137,7 +125,6 @@ describe("per-user database", () => {
       .all() as { name: string }[];
     const names = tables.map((t) => t.name);
 
-    expect(names).toContain("source_chunks_fts");
     expect(names).toContain("wiki_chunks_fts");
   });
 
@@ -154,12 +141,27 @@ describe("per-user database", () => {
 
     db.prepare(
       "INSERT INTO wiki_files (wiki_id, path, hash, modified_at) VALUES (?, ?, ?, datetime('now'))"
-    ).run(wiki.id, "pages/intro.md", "abc123");
+    ).run(wiki.id, "architecture.md", "abc123");
 
     expect(() => {
       db.prepare(
         "INSERT INTO wiki_files (wiki_id, path, hash, modified_at) VALUES (?, ?, ?, datetime('now'))"
-      ).run(wiki.id, "pages/intro.md", "def456");
+      ).run(wiki.id, "architecture.md", "def456");
+    }).toThrow();
+  });
+
+  it("enforces unique source file paths per wiki", () => {
+    db.prepare("INSERT INTO wikis (name) VALUES (?)").run("proj");
+    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get("proj") as { id: number };
+
+    db.prepare(
+      "INSERT INTO source_files (wiki_id, path, content, hash) VALUES (?, ?, ?, ?)"
+    ).run(wiki.id, "src/server.ts", "const app = new Elysia()", "abc123");
+
+    expect(() => {
+      db.prepare(
+        "INSERT INTO source_files (wiki_id, path, content, hash) VALUES (?, ?, ?, ?)"
+      ).run(wiki.id, "src/server.ts", "updated content", "def456");
     }).toThrow();
   });
 
@@ -170,20 +172,33 @@ describe("per-user database", () => {
     const content = "# Architecture\n\nThe system uses...";
     db.prepare(
       "INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, datetime('now'))"
-    ).run(wiki.id, "pages/architecture.md", content, "abc123");
+    ).run(wiki.id, "architecture.md", content, "abc123");
 
     const row = db
       .prepare("SELECT content FROM wiki_files WHERE wiki_id = ? AND path = ?")
-      .get(wiki.id, "pages/architecture.md") as { content: string };
+      .get(wiki.id, "architecture.md") as { content: string };
 
     expect(row.content).toBe(content);
   });
 
+  it("stores wiki_paths on source files", () => {
+    db.prepare("INSERT INTO wikis (name) VALUES (?)").run("proj");
+    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get("proj") as { id: number };
+
+    db.prepare(
+      "INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths) VALUES (?, ?, ?, ?, ?)"
+    ).run(wiki.id, "README.md", "# My Project", "abc123", "overview.md,setup.md");
+
+    const row = db
+      .prepare("SELECT wiki_paths FROM source_files WHERE wiki_id = ? AND path = ?")
+      .get(wiki.id, "README.md") as { wiki_paths: string };
+
+    expect(row.wiki_paths).toBe("overview.md,setup.md");
+  });
+
   it("isolates data between two user databases", () => {
-    // First user DB
     db.prepare("INSERT INTO wikis (name) VALUES (?)").run("user1-project");
 
-    // Second user DB
     const db2 = initUserDb(resolve(tmp.dir, "test-user-2.db"));
     db2.prepare("INSERT INTO wikis (name) VALUES (?)").run("user2-project");
 

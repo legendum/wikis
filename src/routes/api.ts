@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import { extractBearerToken, validateAccountKey } from "../lib/auth";
 import { getUserDb } from "../lib/db";
-import { searchFts, search } from "../lib/search";
+import { search } from "../lib/search";
 import { getManifest, upsertFile, getFile, deleteFile, listFiles } from "../lib/storage";
 import { indexFile, removeFile } from "../lib/indexer";
 import { diffManifests, type Manifest } from "../lib/sync";
