@@ -300,19 +300,20 @@ export const webRoutes = new Elysia()
       }).join("\n");
     }
 
-    let body = `<h1><img src="/public/wikis.png" alt="" class="page-logo">${user ? "Your Wikis" : "Wikis"}</h1>`;
+    let body = `<h1><img src="/public/wikis.png" alt="" class="page-logo">Your Wikis</h1>`;
 
     if (user) {
       const list = wikiList(userWikis);
       body += `<ul>${list || '<li>No wikis yet. Install with <code>curl -fsSL https://wikis.fyi/public/install.sh | sh</code> then run <code>wikis init</code> in a project.</li>'}</ul>`;
+    } else {
+      body += `<p>To manage your own AI-generated wikis, <a href="/login">log in with Legendum</a> then create an Account Key.</p>`;
     }
 
+    body += `<h1 style="margin-top:2em"><img src="/public/wikis.png" alt="" class="page-logo">Public Wikis</h1>`;
     if (publicWikis.length > 0) {
-      if (user) body += `<h1><img src="/public/wikis.png" alt="" class="page-logo">Public Wikis</h1>`;
-      if (!user) body += "<p>Personal wikis powered by LLMs.</p>";
       body += `<ul>${wikiList(publicWikis)}</ul>`;
-    } else if (!user) {
-      body += "<p>Personal wikis powered by LLMs.</p><ul><li>Coming soon</li></ul>";
+    } else {
+      body += `<ul><li>Coming soon</li></ul>`;
     }
 
     return new Response(
