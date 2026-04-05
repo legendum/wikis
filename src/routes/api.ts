@@ -89,64 +89,69 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   // --- Source ingestion ---
 
   .post("/sources", async ({ body, headers }) => {
-    const { user, db } = authGuard(headers);
-    const { wiki: wikiName, files } = body as {
-      wiki: string;
-      files: { path: string; content: string }[];
-    };
+    try {
+      const { user, db } = authGuard(headers);
+      const { wiki: wikiName, files } = body as {
+        wiki: string;
+        files: { path: string; content: string }[];
+      };
 
-    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
-    if (!wiki) return { ok: false, error: "wiki_not_found" };
+      const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
+      if (!wiki) return { ok: false, error: "wiki_not_found" };
 
-    // Store source files — only update modified_at when content changed
-    const now = new Date().toISOString();
-    let changed = 0;
-    for (const file of files) {
-      const hash = hashContent(file.content);
-      const existing = db.prepare(
-        "SELECT hash FROM source_files WHERE wiki_id = ? AND path = ?"
-      ).get(wiki.id, file.path) as { hash: string } | null;
+      // Store source files — only update modified_at when content changed
+      const now = new Date().toISOString();
+      let changed = 0;
+      for (const file of files) {
+        const hash = hashContent(file.content);
+        const existing = db.prepare(
+          "SELECT hash FROM source_files WHERE wiki_id = ? AND path = ?"
+        ).get(wiki.id, file.path) as { hash: string } | null;
 
-      if (existing?.hash === hash) continue;
+        if (existing?.hash === hash) continue;
 
-      db.prepare(`
-        INSERT INTO source_files (wiki_id, path, content, hash, modified_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(wiki_id, path) DO UPDATE SET
-          content = excluded.content,
-          hash = excluded.hash,
-          modified_at = excluded.modified_at
-      `).run(wiki.id, file.path, file.content, hash, now);
-      changed++;
+        db.prepare(`
+          INSERT INTO source_files (wiki_id, path, content, hash, modified_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(wiki_id, path) DO UPDATE SET
+            content = excluded.content,
+            hash = excluded.hash,
+            modified_at = excluded.modified_at
+        `).run(wiki.id, file.path, file.content, hash, now);
+        changed++;
+      }
+
+      const wikiPageCount = (
+        db.prepare("SELECT COUNT(*) as c FROM wiki_files WHERE wiki_id = ?").get(wiki.id) as { c: number }
+      ).c;
+      // Sources can match the DB (changed === 0) while no wiki pages exist yet — e.g. first
+      // upload succeeded but the agent never ran, or only source_files were restored.
+      const needsInitialBuild = files.length > 0 && wikiPageCount === 0;
+
+      const { scheduleRegeneration } = await import("../lib/regenerator");
+      const dbPath = `user${user.id}`;
+      const wikiConfig = { name: wikiName, legendumToken: user.legendum_token };
+
+      const wantsBuild = changed > 0 || needsInitialBuild;
+      const queuedRegeneration = wantsBuild
+        ? scheduleRegeneration(dbPath, db, wiki.id, wikiConfig, {
+            debounce: wikiPageCount > 0,
+            reason: wikiPageCount === 0 ? "initial wiki build" : "source files changed",
+          })
+        : false;
+
+      return {
+        ok: true,
+        data: {
+          files: files.length,
+          changed,
+          queued_regeneration: queuedRegeneration,
+        },
+      };
+    } catch (e) {
+      console.error("Sources endpoint error:", e);
+      return { ok: false, error: "internal_error" };
     }
-
-    const wikiPageCount = (
-      db.prepare("SELECT COUNT(*) as c FROM wiki_files WHERE wiki_id = ?").get(wiki.id) as { c: number }
-    ).c;
-    // Sources can match the DB (changed === 0) while no wiki pages exist yet — e.g. first
-    // upload succeeded but the agent never ran, or only source_files were restored.
-    const needsInitialBuild = files.length > 0 && wikiPageCount === 0;
-
-    const { scheduleRegeneration } = await import("../lib/regenerator");
-    const dbPath = `user${user.id}`;
-    const wikiConfig = { name: wikiName, legendumToken: user.legendum_token };
-
-    const wantsBuild = changed > 0 || needsInitialBuild;
-    const queuedRegeneration = wantsBuild
-      ? scheduleRegeneration(dbPath, db, wiki.id, wikiConfig, {
-          debounce: wikiPageCount > 0,
-          reason: wikiPageCount === 0 ? "initial wiki build" : "source files changed",
-        })
-      : false;
-
-    return {
-      ok: true,
-      data: {
-        files: files.length,
-        changed,
-        queued_regeneration: queuedRegeneration,
-      },
-    };
   })
 
   // --- Search ---
