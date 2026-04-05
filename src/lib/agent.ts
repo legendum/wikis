@@ -458,9 +458,11 @@ function buildMessages(
       role: "system",
       content: `You are a wiki maintainer for the "${config.name}" project. You write clear, well-structured markdown wiki pages.
 
+The wiki should explain the project to a model who has limited context and background knowledge. Assume the reader has never seen the codebase and needs to understand how things work and why.
+
 Rules:
 - Write in third person, present tense
-- Be concise but thorough
+- Be thorough — explain concepts, design decisions, and how components fit together
 - Use headings (##, ###) to structure content
 - Include code examples from sources when they clarify concepts
 - ONLY link to pages in the "Wiki pages" list below — do not invent links to pages that don't exist

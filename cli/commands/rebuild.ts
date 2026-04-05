@@ -41,26 +41,15 @@ export default async function rebuild(args: string[]) {
       body: JSON.stringify({ wiki: config.name, force }),
     });
 
-    const data = (await res.json()) as {
-      ok: boolean;
-      data?: { created: number; updated: number; pages_created: string[]; pages_updated: string[] };
-      message?: string;
-    };
+    const data = (await res.json()) as { ok: boolean; message?: string };
 
     if (!data.ok) {
       console.error(`Rebuild failed: ${data.message || "unknown error"}`);
       process.exit(1);
     }
 
-    const { created, updated } = data.data!;
-    console.log(`Done — ${created} page(s) created, ${updated} page(s) updated.`);
-
-    // Pull the new pages locally
-    if (created > 0 || updated > 0) {
-      console.log("Pulling updated pages...");
-      const { default: sync } = await import("./sync");
-      await sync([]);
-    }
+    console.log("Rebuild started on server. Pages will be updated in the background.");
+    console.log("Run 'wikis sync' to pull pages once the build completes.");
   } catch (e) {
     console.error(`Could not reach ${apiUrl}: ${(e as Error).message}`);
     process.exit(1);

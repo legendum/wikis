@@ -213,24 +213,19 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
     if (!wiki) return { ok: false, error: "wiki_not_found" };
 
-    const { runAgent } = await import("../lib/agent");
-    try {
-      const result = await runAgent(db, wiki.id, { name: wikiName }, {
+    // Run in background — builds can take 15+ minutes
+    import("../lib/agent").then(({ runAgent }) => {
+      runAgent(db, wiki.id, { name: wikiName }, {
         reason: "manual rebuild",
         force: !!force,
+      }).catch((e) => {
+        import("../lib/log").then(({ log }) => {
+          log.error(`Rebuild failed for ${wikiName}`, { wiki: wikiName, error: (e as Error).message });
+        });
       });
-      return {
-        ok: true,
-        data: {
-          created: result.pagesCreated.length,
-          updated: result.pagesUpdated.length,
-          pages_created: result.pagesCreated,
-          pages_updated: result.pagesUpdated,
-        },
-      };
-    } catch (e) {
-      return { ok: false, error: "rebuild_failed", message: (e as Error).message };
-    }
+    });
+
+    return { ok: true, data: { message: "Rebuild started" } };
   })
 
   // --- Login (register account key) ---
