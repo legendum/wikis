@@ -308,7 +308,7 @@ export const webRoutes = new Elysia()
     }
 
     if (publicWikis.length > 0) {
-      if (user) body += "<h2>Public Wikis</h2>";
+      if (user) body += `<h1><img src="/public/wikis.png" alt="" class="page-logo">Public Wikis</h1>`;
       if (!user) body += "<p>Personal wikis powered by LLMs.</p>";
       body += `<ul>${wikiList(publicWikis)}</ul>`;
     } else if (!user) {
