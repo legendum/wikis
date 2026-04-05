@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { Database } from "bun:sqlite";
-import { existsSync } from "fs";
-import { resolve } from "path";
-import { createTestDataDir } from "../helpers/db";
+import { Database } from 'bun:sqlite';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
+import { createTestDataDir } from '../helpers/db';
 
 // We test the schema directly against ephemeral DBs to avoid
 // importing src/lib/db.ts which depends on the global DATA_DIR.
@@ -83,21 +83,21 @@ END;
 
 function initUserDb(path: string): Database {
   const db = new Database(path, { create: true });
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA foreign_keys = ON");
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
   db.exec(USER_SCHEMA);
   db.exec(FTS_SCHEMA);
   db.exec(FTS_TRIGGERS);
   return db;
 }
 
-describe("per-user database", () => {
+describe('per-user database', () => {
   let tmp: { dir: string; cleanup: () => void };
   let db: Database;
 
   beforeEach(() => {
     tmp = createTestDataDir();
-    db = initUserDb(resolve(tmp.dir, "test-user.db"));
+    db = initUserDb(resolve(tmp.dir, 'test-user.db'));
   });
 
   afterEach(() => {
@@ -105,109 +105,133 @@ describe("per-user database", () => {
     tmp.cleanup();
   });
 
-  it("creates all tables", () => {
+  it('creates all tables', () => {
     const tables = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+      )
       .all() as { name: string }[];
     const names = tables.map((t) => t.name);
 
-    expect(names).toContain("wikis");
-    expect(names).toContain("wiki_files");
-    expect(names).toContain("source_files");
-    expect(names).toContain("wiki_chunks");
-    expect(names).toContain("events");
+    expect(names).toContain('wikis');
+    expect(names).toContain('wiki_files');
+    expect(names).toContain('source_files');
+    expect(names).toContain('wiki_chunks');
+    expect(names).toContain('events');
   });
 
-  it("creates FTS5 virtual tables", () => {
+  it('creates FTS5 virtual tables', () => {
     const tables = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_fts'")
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_fts'"
+      )
       .all() as { name: string }[];
     const names = tables.map((t) => t.name);
 
-    expect(names).toContain("wiki_chunks_fts");
+    expect(names).toContain('wiki_chunks_fts');
   });
 
-  it("enforces unique wiki names", () => {
-    db.prepare("INSERT INTO wikis (name) VALUES (?)").run("my-project");
+  it('enforces unique wiki names', () => {
+    db.prepare('INSERT INTO wikis (name) VALUES (?)').run('my-project');
     expect(() => {
-      db.prepare("INSERT INTO wikis (name) VALUES (?)").run("my-project");
+      db.prepare('INSERT INTO wikis (name) VALUES (?)').run('my-project');
     }).toThrow();
   });
 
-  it("enforces unique wiki file paths per wiki", () => {
-    db.prepare("INSERT INTO wikis (name) VALUES (?)").run("proj");
-    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get("proj") as { id: number };
+  it('enforces unique wiki file paths per wiki', () => {
+    db.prepare('INSERT INTO wikis (name) VALUES (?)').run('proj');
+    const wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get('proj') as { id: number };
 
     db.prepare(
       "INSERT INTO wiki_files (wiki_id, path, hash, modified_at) VALUES (?, ?, ?, datetime('now'))"
-    ).run(wiki.id, "architecture.md", "abc123");
+    ).run(wiki.id, 'architecture.md', 'abc123');
 
     expect(() => {
       db.prepare(
         "INSERT INTO wiki_files (wiki_id, path, hash, modified_at) VALUES (?, ?, ?, datetime('now'))"
-      ).run(wiki.id, "architecture.md", "def456");
+      ).run(wiki.id, 'architecture.md', 'def456');
     }).toThrow();
   });
 
-  it("enforces unique source file paths per wiki", () => {
-    db.prepare("INSERT INTO wikis (name) VALUES (?)").run("proj");
-    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get("proj") as { id: number };
+  it('enforces unique source file paths per wiki', () => {
+    db.prepare('INSERT INTO wikis (name) VALUES (?)').run('proj');
+    const wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get('proj') as { id: number };
 
     db.prepare(
-      "INSERT INTO source_files (wiki_id, path, content, hash) VALUES (?, ?, ?, ?)"
-    ).run(wiki.id, "src/server.ts", "const app = new Elysia()", "abc123");
+      'INSERT INTO source_files (wiki_id, path, content, hash) VALUES (?, ?, ?, ?)'
+    ).run(wiki.id, 'src/server.ts', 'const app = new Elysia()', 'abc123');
 
     expect(() => {
       db.prepare(
-        "INSERT INTO source_files (wiki_id, path, content, hash) VALUES (?, ?, ?, ?)"
-      ).run(wiki.id, "src/server.ts", "updated content", "def456");
+        'INSERT INTO source_files (wiki_id, path, content, hash) VALUES (?, ?, ?, ?)'
+      ).run(wiki.id, 'src/server.ts', 'updated content', 'def456');
     }).toThrow();
   });
 
-  it("stores and retrieves wiki file content", () => {
-    db.prepare("INSERT INTO wikis (name) VALUES (?)").run("proj");
-    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get("proj") as { id: number };
+  it('stores and retrieves wiki file content', () => {
+    db.prepare('INSERT INTO wikis (name) VALUES (?)').run('proj');
+    const wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get('proj') as { id: number };
 
-    const content = "# Architecture\n\nThe system uses...";
+    const content = '# Architecture\n\nThe system uses...';
     db.prepare(
       "INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, datetime('now'))"
-    ).run(wiki.id, "architecture.md", content, "abc123");
+    ).run(wiki.id, 'architecture.md', content, 'abc123');
 
     const row = db
-      .prepare("SELECT content FROM wiki_files WHERE wiki_id = ? AND path = ?")
-      .get(wiki.id, "architecture.md") as { content: string };
+      .prepare('SELECT content FROM wiki_files WHERE wiki_id = ? AND path = ?')
+      .get(wiki.id, 'architecture.md') as { content: string };
 
     expect(row.content).toBe(content);
   });
 
-  it("stores wiki_paths on source files", () => {
-    db.prepare("INSERT INTO wikis (name) VALUES (?)").run("proj");
-    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get("proj") as { id: number };
+  it('stores wiki_paths on source files', () => {
+    db.prepare('INSERT INTO wikis (name) VALUES (?)').run('proj');
+    const wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get('proj') as { id: number };
 
     db.prepare(
-      "INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths) VALUES (?, ?, ?, ?, ?)"
-    ).run(wiki.id, "README.md", "# My Project", "abc123", "overview.md,setup.md");
+      'INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths) VALUES (?, ?, ?, ?, ?)'
+    ).run(
+      wiki.id,
+      'README.md',
+      '# My Project',
+      'abc123',
+      'overview.md,setup.md'
+    );
 
     const row = db
-      .prepare("SELECT wiki_paths FROM source_files WHERE wiki_id = ? AND path = ?")
-      .get(wiki.id, "README.md") as { wiki_paths: string };
+      .prepare(
+        'SELECT wiki_paths FROM source_files WHERE wiki_id = ? AND path = ?'
+      )
+      .get(wiki.id, 'README.md') as { wiki_paths: string };
 
-    expect(row.wiki_paths).toBe("overview.md,setup.md");
+    expect(row.wiki_paths).toBe('overview.md,setup.md');
   });
 
-  it("isolates data between two user databases", () => {
-    db.prepare("INSERT INTO wikis (name) VALUES (?)").run("user1-project");
+  it('isolates data between two user databases', () => {
+    db.prepare('INSERT INTO wikis (name) VALUES (?)').run('user1-project');
 
-    const db2 = initUserDb(resolve(tmp.dir, "test-user-2.db"));
-    db2.prepare("INSERT INTO wikis (name) VALUES (?)").run("user2-project");
+    const db2 = initUserDb(resolve(tmp.dir, 'test-user-2.db'));
+    db2.prepare('INSERT INTO wikis (name) VALUES (?)').run('user2-project');
 
-    const wikis1 = db.prepare("SELECT name FROM wikis").all() as { name: string }[];
-    const wikis2 = db2.prepare("SELECT name FROM wikis").all() as { name: string }[];
+    const wikis1 = db.prepare('SELECT name FROM wikis').all() as {
+      name: string;
+    }[];
+    const wikis2 = db2.prepare('SELECT name FROM wikis').all() as {
+      name: string;
+    }[];
 
     expect(wikis1).toHaveLength(1);
-    expect(wikis1[0].name).toBe("user1-project");
+    expect(wikis1[0].name).toBe('user1-project');
     expect(wikis2).toHaveLength(1);
-    expect(wikis2[0].name).toBe("user2-project");
+    expect(wikis2[0].name).toBe('user2-project');
 
     db2.close();
   });

@@ -88,7 +88,7 @@ async function pickFilesForSection(
     messages: [
       {
         role: 'system',
-        content: `You select source files relevant to a wiki page. Given a directory tree and a page description, respond with ONLY a JSON array of file paths. Choose the files most relevant to the topic. Include up to 15 files.`,
+        content: `You select source files relevant to a wiki page. Given a directory tree and a page description, respond with ONLY a JSON array of file paths. Choose all files that could be relevant to the topic, even peripherally. Include up to 20 files to ensure comprehensive coverage.`,
       },
       {
         role: 'user',
@@ -528,7 +528,8 @@ export async function runAgent(
       .all(wikiId, pagePath) as { path: string }[];
 
     const sourceContent: string[] = [];
-    for (const row of sourceRows) {
+    for (const row of sourceRows.slice(0, 20)) {
+      // Limit to 20 most relevant sources
       const content = getSourceFile(db, wikiId, row.path);
       if (content) sourceContent.push(`--- ${row.path} ---\n${content}`);
     }

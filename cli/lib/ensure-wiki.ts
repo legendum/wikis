@@ -5,10 +5,10 @@
 export async function ensureWikiRow(
   apiUrl: string,
   headers: Record<string, string>,
-  wikiName: string,
+  wikiName: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await fetch(`${apiUrl}/api/sync`, {
-    method: "POST",
+    method: 'POST',
     headers,
     body: JSON.stringify({ wiki: wikiName, files: {} }),
   });
@@ -17,7 +17,7 @@ export async function ensureWikiRow(
   }
   const data = (await res.json()) as { ok: boolean; error?: string };
   if (!data.ok) {
-    return { ok: false, error: data.error || "unknown error" };
+    return { ok: false, error: data.error || 'unknown error' };
   }
   return { ok: true };
 }

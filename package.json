@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "bun run --watch src/server.ts",
     "start": "bun run src/server.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
   },
   "dependencies": {
     "elysia": "^1.2",
@@ -17,6 +19,7 @@
     "openai": "^6.33.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
     "@types/js-yaml": "^4.0"
   }
 }

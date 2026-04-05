@@ -1,7 +1,7 @@
 /**
  * wikis status — show daemon health and current project state.
  */
-import { readProjects, readDaemonPid, isDaemonRunning } from "../lib/config";
+import { isDaemonRunning, readDaemonPid, readProjects } from '../lib/config';
 
 export default async function status(_args: string[]) {
   // Daemon status
@@ -10,7 +10,7 @@ export default async function status(_args: string[]) {
   if (running) {
     console.log(`Daemon: running (PID ${pid})`);
   } else {
-    console.log("Daemon: not running");
+    console.log('Daemon: not running');
   }
 
   // Current project status
@@ -22,10 +22,12 @@ export default async function status(_args: string[]) {
     console.log();
     console.log(`Project: ${project.name}`);
     console.log(`Path:    ${project.path}`);
-    console.log(`Checked: ${project.last_check || "never"}`);
+    console.log(`Checked: ${project.last_check || 'never'}`);
   } else if (projects.length > 0) {
     console.log();
-    console.log("This directory is not a registered project.");
-    console.log(`${projects.length} project(s) registered — run 'wikis list' to see them.`);
+    console.log('This directory is not a registered project.');
+    console.log(
+      `${projects.length} project(s) registered — run 'wikis list' to see them.`
+    );
   }
 }

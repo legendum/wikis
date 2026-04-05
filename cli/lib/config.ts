@@ -1,13 +1,19 @@
 /**
  * CLI config — reads/writes ~/.config/wikis/config.yaml
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
-import { resolve } from "path";
-import yaml from "js-yaml";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
+import yaml from 'js-yaml';
+import { resolve } from 'path';
 
-const CONFIG_DIR = resolve(process.env.HOME || "~", ".config/wikis");
-const CONFIG_PATH = resolve(CONFIG_DIR, "config.yaml");
-const PROJECTS_PATH = resolve(CONFIG_DIR, "projects.yaml");
+const CONFIG_DIR = resolve(process.env.HOME || '~', '.config/wikis');
+const CONFIG_PATH = resolve(CONFIG_DIR, 'config.yaml');
+const PROJECTS_PATH = resolve(CONFIG_DIR, 'projects.yaml');
 
 export interface CliConfig {
   account_key?: string;
@@ -31,7 +37,7 @@ function ensureDir() {
 
 export function readConfig(): CliConfig {
   if (!existsSync(CONFIG_PATH)) return {};
-  return (yaml.load(readFileSync(CONFIG_PATH, "utf8")) as CliConfig) || {};
+  return (yaml.load(readFileSync(CONFIG_PATH, 'utf8')) as CliConfig) || {};
 }
 
 export function writeConfig(config: CliConfig): void {
@@ -41,7 +47,11 @@ export function writeConfig(config: CliConfig): void {
 
 export function readProjects(): ProjectsConfig {
   if (!existsSync(PROJECTS_PATH)) return { projects: [] };
-  return (yaml.load(readFileSync(PROJECTS_PATH, "utf8")) as ProjectsConfig) || { projects: [] };
+  return (
+    (yaml.load(readFileSync(PROJECTS_PATH, 'utf8')) as ProjectsConfig) || {
+      projects: [],
+    }
+  );
 }
 
 export function writeProjects(config: ProjectsConfig): void {
@@ -72,7 +82,7 @@ export function removeProject(projectPath: string): boolean {
 }
 
 export function getApiUrl(): string {
-  return readConfig().api_url || "https://wikis.fyi";
+  return readConfig().api_url || 'https://wikis.fyi';
 }
 
 export function getAccountKey(): string | null {
@@ -86,29 +96,35 @@ export function getPollInterval(): number {
 
 // --- Per-project file hashes ---
 
-const HASHES_DIR = resolve(CONFIG_DIR, "hashes");
-const DAEMON_PID_PATH = resolve(CONFIG_DIR, "daemon.pid");
+const HASHES_DIR = resolve(CONFIG_DIR, 'hashes');
+const DAEMON_PID_PATH = resolve(CONFIG_DIR, 'daemon.pid');
 
 export function readHashes(projectName: string): Record<string, string> {
   const p = resolve(HASHES_DIR, `${projectName}.json`);
   if (!existsSync(p)) return {};
   try {
-    return JSON.parse(readFileSync(p, "utf8"));
+    return JSON.parse(readFileSync(p, 'utf8'));
   } catch {
     return {};
   }
 }
 
-export function writeHashes(projectName: string, hashes: Record<string, string>): void {
+export function writeHashes(
+  projectName: string,
+  hashes: Record<string, string>
+): void {
   mkdirSync(HASHES_DIR, { recursive: true });
-  writeFileSync(resolve(HASHES_DIR, `${projectName}.json`), JSON.stringify(hashes));
+  writeFileSync(
+    resolve(HASHES_DIR, `${projectName}.json`),
+    JSON.stringify(hashes)
+  );
 }
 
 // --- Daemon PID ---
 
 export function readDaemonPid(): number | null {
   if (!existsSync(DAEMON_PID_PATH)) return null;
-  const pid = parseInt(readFileSync(DAEMON_PID_PATH, "utf8").trim(), 10);
+  const pid = parseInt(readFileSync(DAEMON_PID_PATH, 'utf8').trim(), 10);
   return isNaN(pid) ? null : pid;
 }
 
@@ -132,4 +148,4 @@ export function isDaemonRunning(): boolean {
   }
 }
 
-export { CONFIG_DIR, CONFIG_PATH, PROJECTS_PATH, HASHES_DIR, DAEMON_PID_PATH };
+export { CONFIG_DIR, CONFIG_PATH, DAEMON_PID_PATH, HASHES_DIR, PROJECTS_PATH };
