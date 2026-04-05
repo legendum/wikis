@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
-import { readFileSync } from 'fs';
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 /**
  * Build public wikis from config/public-wikis.yml.
  *
@@ -13,34 +14,32 @@ import { readFileSync } from 'fs';
  *   bun run scripts/build-public-wikis.ts --force         # regenerate all pages (all)
  *   bun run scripts/build-public-wikis.ts --force --wiki <name> # regenerate all pages (specific)
  */
-import yaml from 'js-yaml';
-import { resolve } from 'path';
+import yaml from "js-yaml";
 import {
   type AgentResult,
   fillMissingPages,
   type WikiConfig,
-} from '../src/lib/agent';
-import { getPublicDb } from '../src/lib/db';
-import { log } from '../src/lib/log';
+} from "../src/lib/agent";
+import { getPublicDb } from "../src/lib/db";
 import {
   buildAllPublicWikis,
   type PublicWikiDef,
-} from '../src/lib/public-wikis';
+} from "../src/lib/public-wikis";
 
-const configPath = resolve(import.meta.dir, '../config/public-wikis.yml');
-const config = yaml.load(readFileSync(configPath, 'utf8')) as {
+const configPath = resolve(import.meta.dir, "../config/public-wikis.yml");
+const config = yaml.load(readFileSync(configPath, "utf8")) as {
   wikis: PublicWikiDef[];
 };
 
-const fillOnly = process.argv.includes('--fill');
-const force = process.argv.includes('--force');
-const listOnly = process.argv.includes('--list');
+const fillOnly = process.argv.includes("--fill");
+const force = process.argv.includes("--force");
+const listOnly = process.argv.includes("--list");
 
-const wikiArgIndex = process.argv.indexOf('--wiki');
+const wikiArgIndex = process.argv.indexOf("--wiki");
 const targetWiki = wikiArgIndex !== -1 ? process.argv[wikiArgIndex + 1] : null;
 
 if (listOnly) {
-  console.log('Available public wikis:');
+  console.log("Available public wikis:");
   for (const wiki of config.wikis) {
     console.log(`  ${wiki.name} (${wiki.repo})`);
   }
@@ -52,7 +51,7 @@ if (targetWiki) {
   const found = config.wikis.find((w) => w.name === targetWiki);
   if (!found) {
     console.error(
-      `Wiki "${targetWiki}" not found. Use --list to see available wikis.`
+      `Wiki "${targetWiki}" not found. Use --list to see available wikis.`,
     );
     process.exit(1);
   }
@@ -61,17 +60,17 @@ if (targetWiki) {
 
 if (fillOnly) {
   console.log(
-    `Filling missing pages for ${wikisToProcess.length} public wiki(s)...`
+    `Filling missing pages for ${wikisToProcess.length} public wiki(s)...`,
   );
   const db = getPublicDb();
 
   for (const def of wikisToProcess) {
     const wiki = db
-      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .prepare("SELECT id FROM wikis WHERE name = ?")
       .get(def.name) as { id: number } | null;
     if (!wiki) {
       console.log(
-        `Wiki "${def.name}" not found in DB — run a full build first.`
+        `Wiki "${def.name}" not found in DB — run a full build first.`,
       );
       continue;
     }
@@ -87,7 +86,7 @@ if (fillOnly) {
 
     if (result.pagesCreated.length) {
       console.log(
-        `${def.name}: created ${result.pagesCreated.join(', ')} (${result.usage.input_tokens} in / ${result.usage.output_tokens} out)`
+        `${def.name}: created ${result.pagesCreated.join(", ")} (${result.usage.input_tokens} in / ${result.usage.output_tokens} out)`,
       );
     } else {
       console.log(`${def.name}: no missing pages.`);
@@ -95,9 +94,9 @@ if (fillOnly) {
   }
 } else {
   console.log(
-    `Building ${wikisToProcess.length} public wiki(s)...${force ? ' (force regenerate)' : ''}`
+    `Building ${wikisToProcess.length} public wiki(s)...${force ? " (force regenerate)" : ""}`,
   );
   await buildAllPublicWikis(wikisToProcess, { force });
 }
 
-console.log('Done.');
+console.log("Done.");

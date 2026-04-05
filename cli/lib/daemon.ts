@@ -2,12 +2,12 @@
  * Daemon process — polls registered projects for source file changes and syncs.
  * Spawned by `wikis start`, killed by `wikis stop`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const { parse } = Bun.YAML;
 
-import { CryptoHasher, Glob } from 'bun';
+import { CryptoHasher, Glob } from "bun";
 import {
   getAccountKey,
   getApiUrl,
@@ -18,8 +18,8 @@ import {
   writeDaemonPid,
   writeHashes,
   writeProjects,
-} from './config';
-import { ensureWikiRow } from './ensure-wiki';
+} from "./config";
+import { ensureWikiRow } from "./ensure-wiki";
 
 const POLL_INTERVAL = getPollInterval();
 const MAX_BACKOFF = 30 * 60 * 1000; // 30 minutes
@@ -28,9 +28,9 @@ const MAX_BACKOFF = 30 * 60 * 1000; // 30 minutes
 const backoff = new Map<string, { until: number; delay: number }>();
 
 function hashFile(content: string): string {
-  const hasher = new CryptoHasher('sha256');
+  const hasher = new CryptoHasher("sha256");
   hasher.update(content);
-  return hasher.digest('hex');
+  return hasher.digest("hex");
 }
 
 interface WikiConfig {
@@ -41,7 +41,7 @@ interface WikiConfig {
 
 async function gatherSourceHashes(
   projectDir: string,
-  config: WikiConfig
+  config: WikiConfig,
 ): Promise<Record<string, string>> {
   const hashes: Record<string, string> = {};
   for (const pattern of config.sources) {
@@ -51,7 +51,7 @@ async function gatherSourceHashes(
       if (excluded) continue;
       const fullPath = resolve(projectDir, file);
       if (!existsSync(fullPath)) continue;
-      hashes[file] = hashFile(readFileSync(fullPath, 'utf8'));
+      hashes[file] = hashFile(readFileSync(fullPath, "utf8"));
     }
   }
   return hashes;
@@ -59,7 +59,7 @@ async function gatherSourceHashes(
 
 function findChangedFiles(
   current: Record<string, string>,
-  stored: Record<string, string>
+  stored: Record<string, string>,
 ): string[] {
   const changed: string[] = [];
   for (const [path, hash] of Object.entries(current)) {
@@ -71,12 +71,12 @@ function findChangedFiles(
 async function pullWikiPages(
   projectDir: string,
   config: WikiConfig,
-  headers: Record<string, string>
+  headers: Record<string, string>,
 ): Promise<number> {
   const apiUrl = getApiUrl();
 
   const syncRes = await fetch(`${apiUrl}/api/sync`, {
-    method: 'POST',
+    method: "POST",
     headers,
     body: JSON.stringify({ wiki: config.name, files: {} }),
   });
@@ -90,7 +90,7 @@ async function pullWikiPages(
   if (pullPaths.length === 0) return 0;
 
   const pullRes = await fetch(`${apiUrl}/api/pull`, {
-    method: 'POST',
+    method: "POST",
     headers,
     body: JSON.stringify({ wiki: config.name, paths: pullPaths }),
   });
@@ -101,10 +101,10 @@ async function pullWikiPages(
     data?: { files: { path: string; content: string }[] };
   };
 
-  const wikiDir = resolve(projectDir, 'wiki');
+  const wikiDir = resolve(projectDir, "wiki");
   for (const file of pullData.data?.files || []) {
     const filePath = resolve(wikiDir, file.path);
-    mkdirSync(resolve(filePath, '..'), { recursive: true });
+    mkdirSync(resolve(filePath, ".."), { recursive: true });
     writeFileSync(filePath, file.content);
   }
 
@@ -113,14 +113,14 @@ async function pullWikiPages(
 
 async function syncProject(
   projectDir: string,
-  config: WikiConfig
+  config: WikiConfig,
 ): Promise<boolean> {
   const apiUrl = getApiUrl();
   const accountKey = getAccountKey();
   if (!accountKey) return false;
 
   const headers = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     Authorization: `Bearer ${accountKey}`,
   };
 
@@ -133,7 +133,7 @@ async function syncProject(
   if (changedPaths.length > 0) {
     const files = changedPaths.map((path) => ({
       path,
-      content: readFileSync(resolve(projectDir, path), 'utf8'),
+      content: readFileSync(resolve(projectDir, path), "utf8"),
     }));
 
     const ensure = await ensureWikiRow(apiUrl, headers, config.name);
@@ -142,7 +142,7 @@ async function syncProject(
     }
 
     const res = await fetch(`${apiUrl}/api/sources`, {
-      method: 'POST',
+      method: "POST",
       headers,
       body: JSON.stringify({ wiki: config.name, files }),
     });
@@ -172,7 +172,7 @@ async function pollOnce() {
   const { projects } = readProjects();
 
   for (const project of projects) {
-    const configPath = resolve(project.path, 'wiki', 'config.yml');
+    const configPath = resolve(project.path, "wiki", "config.yml");
     if (!existsSync(configPath)) continue;
 
     // Check backoff
@@ -180,7 +180,7 @@ async function pollOnce() {
     if (bo && bo.until > Date.now()) continue;
 
     try {
-      const config = parse(readFileSync(configPath, 'utf8')) as WikiConfig;
+      const config = parse(readFileSync(configPath, "utf8")) as WikiConfig;
       const synced = await syncProject(project.path, config);
       if (synced) {
         console.log(`[${new Date().toISOString()}] Synced ${project.name}`);
@@ -190,11 +190,11 @@ async function pollOnce() {
       const prev = backoff.get(project.name);
       const delay = Math.min(
         prev ? prev.delay * 2 : POLL_INTERVAL,
-        MAX_BACKOFF
+        MAX_BACKOFF,
       );
       backoff.set(project.name, { until: Date.now() + delay, delay });
       console.error(
-        `[${new Date().toISOString()}] Error syncing ${project.name}: ${(e as Error).message}`
+        `[${new Date().toISOString()}] Error syncing ${project.name}: ${(e as Error).message}`,
       );
     }
   }
@@ -204,16 +204,16 @@ async function pollOnce() {
 
 writeDaemonPid(process.pid);
 console.log(
-  `[${new Date().toISOString()}] Daemon started (PID ${process.pid})`
+  `[${new Date().toISOString()}] Daemon started (PID ${process.pid})`,
 );
 
-process.on('SIGTERM', () => {
+process.on("SIGTERM", () => {
   console.log(`[${new Date().toISOString()}] Daemon stopping`);
   removeDaemonPid();
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
+process.on("SIGINT", () => {
   removeDaemonPid();
   process.exit(0);
 });

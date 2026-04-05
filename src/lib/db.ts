@@ -1,7 +1,7 @@
-import { Database } from 'bun:sqlite';
-import { existsSync, mkdirSync } from 'fs';
-import { dirname, resolve } from 'path';
-import { DATA_DIR } from './constants';
+import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { DATA_DIR } from "./constants";
 
 // --- Global database: user registry ---
 
@@ -40,10 +40,10 @@ export function getGlobalDb(): Database {
   if (globalDb) return globalDb;
 
   mkdirSync(DATA_DIR, { recursive: true });
-  const dbPath = resolve(DATA_DIR, 'wikis.db');
+  const dbPath = resolve(DATA_DIR, "wikis.db");
   globalDb = new Database(dbPath, { create: true });
-  globalDb.exec('PRAGMA journal_mode = WAL');
-  globalDb.exec('PRAGMA foreign_keys = ON');
+  globalDb.exec("PRAGMA journal_mode = WAL");
+  globalDb.exec("PRAGMA foreign_keys = ON");
   globalDb.exec(GLOBAL_SCHEMA);
   return globalDb;
 }
@@ -152,8 +152,8 @@ export function getUserDb(userId: number): Database {
   mkdirSync(dirname(dbPath), { recursive: true });
 
   const db = new Database(dbPath, { create: true });
-  db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA foreign_keys = ON');
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
   db.exec(USER_SCHEMA);
   db.exec(FTS_SCHEMA);
   db.exec(FTS_TRIGGERS);
@@ -167,13 +167,13 @@ export function getUserDb(userId: number): Database {
 export function createUser(email: string): number {
   const db = getGlobalDb();
   const userId = db
-    .prepare('INSERT INTO users (email, db_path) VALUES (?, ?) RETURNING id')
-    .get(email, '') as { id: number };
+    .prepare("INSERT INTO users (email, db_path) VALUES (?, ?) RETURNING id")
+    .get(email, "") as { id: number };
 
   // Set the db_path now that we know the id
-  db.prepare('UPDATE users SET db_path = ? WHERE id = ?').run(
+  db.prepare("UPDATE users SET db_path = ? WHERE id = ?").run(
     `data/user${userId.id}.db`,
-    userId.id
+    userId.id,
   );
 
   // Initialise the per-user database
@@ -184,7 +184,7 @@ export function createUser(email: string): number {
 
 export function getUserByEmail(email: string) {
   return getGlobalDb()
-    .prepare('SELECT * FROM users WHERE email = ?')
+    .prepare("SELECT * FROM users WHERE email = ?")
     .get(email) as {
     id: number;
     email: string;
@@ -195,7 +195,7 @@ export function getUserByEmail(email: string) {
 }
 
 export function getUserById(id: number) {
-  return getGlobalDb().prepare('SELECT * FROM users WHERE id = ?').get(id) as {
+  return getGlobalDb().prepare("SELECT * FROM users WHERE id = ?").get(id) as {
     id: number;
     email: string;
     legendum_token: string | null;
@@ -212,10 +212,10 @@ export function getPublicDb(): Database {
   if (publicDb) return publicDb;
 
   mkdirSync(DATA_DIR, { recursive: true });
-  const dbPath = resolve(DATA_DIR, 'public.db');
+  const dbPath = resolve(DATA_DIR, "public.db");
   publicDb = new Database(dbPath, { create: true });
-  publicDb.exec('PRAGMA journal_mode = WAL');
-  publicDb.exec('PRAGMA foreign_keys = ON');
+  publicDb.exec("PRAGMA journal_mode = WAL");
+  publicDb.exec("PRAGMA foreign_keys = ON");
   publicDb.exec(USER_SCHEMA);
   publicDb.exec(FTS_SCHEMA);
   publicDb.exec(FTS_TRIGGERS);

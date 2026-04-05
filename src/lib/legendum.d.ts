@@ -9,13 +9,13 @@ export interface LegendumServiceClient {
     accountToken: string,
     amount: number,
     description: string,
-    opts?: { key?: string; meta?: unknown }
+    opts?: { key?: string; meta?: unknown },
   ): Promise<{ email: string; transaction_id: number; balance: number }>;
   balance(accountToken: string): Promise<{ balance: number; held: number }>;
   reserve(
     accountToken: string,
     amount: number,
-    description?: string
+    description?: string,
   ): Promise<LegendumReservation>;
   requestLink(): Promise<{ code: string; request_id: string }>;
   pollLink(requestId: string): Promise<{
@@ -31,7 +31,7 @@ export interface LegendumServiceClient {
   }): string;
   exchangeCode(
     code: string,
-    redirectUri: string
+    redirectUri: string,
   ): Promise<{
     email: string;
     linked: boolean;
@@ -44,11 +44,11 @@ export interface LegendumServiceClient {
   tab(
     accountToken: string,
     description: string,
-    opts: LegendumTabOptions
+    opts: LegendumTabOptions,
   ): LegendumTab;
   waitForLink(
     requestId: string,
-    opts?: { interval?: number; timeout?: number }
+    opts?: { interval?: number; timeout?: number },
   ): Promise<{
     status: string;
     account_token?: string;
@@ -61,7 +61,7 @@ export interface LegendumReservation {
   id: unknown;
   amount: number;
   settle: (
-    settleAmount?: number
+    settleAmount?: number,
   ) => Promise<{ email: string; transaction_id: number; balance: number }>;
   release: () => Promise<unknown>;
 }
@@ -83,64 +83,64 @@ export interface LegendumAccountClient {
 /** Non-throwing wrapper from `client()`. */
 export interface LegendumSafeClient {
   charge: (
-    ...args: Parameters<LegendumServiceClient['charge']>
+    ...args: Parameters<LegendumServiceClient["charge"]>
   ) => Promise<
-    | { ok: true; data: Awaited<ReturnType<LegendumServiceClient['charge']>> }
+    | { ok: true; data: Awaited<ReturnType<LegendumServiceClient["charge"]>> }
     | { ok: false; error: string; code?: string }
   >;
   balance: (
-    ...args: Parameters<LegendumServiceClient['balance']>
+    ...args: Parameters<LegendumServiceClient["balance"]>
   ) => Promise<
-    | { ok: true; data: Awaited<ReturnType<LegendumServiceClient['balance']>> }
+    | { ok: true; data: Awaited<ReturnType<LegendumServiceClient["balance"]>> }
     | { ok: false; error: string; code?: string }
   >;
   reserve: (
-    ...args: Parameters<LegendumServiceClient['reserve']>
+    ...args: Parameters<LegendumServiceClient["reserve"]>
   ) => Promise<
-    | { ok: true; data: Awaited<ReturnType<LegendumServiceClient['reserve']>> }
+    | { ok: true; data: Awaited<ReturnType<LegendumServiceClient["reserve"]>> }
     | { ok: false; error: string; code?: string }
   >;
   requestLink: (
-    ...args: Parameters<LegendumServiceClient['requestLink']>
+    ...args: Parameters<LegendumServiceClient["requestLink"]>
   ) => Promise<
     | {
         ok: true;
-        data: Awaited<ReturnType<LegendumServiceClient['requestLink']>>;
+        data: Awaited<ReturnType<LegendumServiceClient["requestLink"]>>;
       }
     | { ok: false; error: string; code?: string }
   >;
   pollLink: (
-    ...args: Parameters<LegendumServiceClient['pollLink']>
+    ...args: Parameters<LegendumServiceClient["pollLink"]>
   ) => Promise<
-    | { ok: true; data: Awaited<ReturnType<LegendumServiceClient['pollLink']>> }
+    | { ok: true; data: Awaited<ReturnType<LegendumServiceClient["pollLink"]>> }
     | { ok: false; error: string; code?: string }
   >;
   waitForLink: (
-    ...args: Parameters<LegendumServiceClient['waitForLink']>
+    ...args: Parameters<LegendumServiceClient["waitForLink"]>
   ) => Promise<
     | {
         ok: true;
-        data: Awaited<ReturnType<LegendumServiceClient['waitForLink']>>;
+        data: Awaited<ReturnType<LegendumServiceClient["waitForLink"]>>;
       }
     | { ok: false; error: string; code?: string }
   >;
-  authUrl: LegendumServiceClient['authUrl'];
-  authAndLinkUrl: LegendumServiceClient['authAndLinkUrl'];
+  authUrl: LegendumServiceClient["authUrl"];
+  authAndLinkUrl: LegendumServiceClient["authAndLinkUrl"];
   exchangeCode: (
-    ...args: Parameters<LegendumServiceClient['exchangeCode']>
+    ...args: Parameters<LegendumServiceClient["exchangeCode"]>
   ) => Promise<
     | {
         ok: true;
-        data: Awaited<ReturnType<LegendumServiceClient['exchangeCode']>>;
+        data: Awaited<ReturnType<LegendumServiceClient["exchangeCode"]>>;
       }
     | { ok: false; error: string; code?: string }
   >;
   linkAccount: (
-    ...args: Parameters<LegendumServiceClient['linkAccount']>
+    ...args: Parameters<LegendumServiceClient["linkAccount"]>
   ) => Promise<
     | {
         ok: true;
-        data: Awaited<ReturnType<LegendumServiceClient['linkAccount']>>;
+        data: Awaited<ReturnType<LegendumServiceClient["linkAccount"]>>;
       }
     | { ok: false; error: string; code?: string }
   >;
@@ -148,7 +148,7 @@ export interface LegendumSafeClient {
   tab: (
     accountToken: string,
     description: string,
-    opts: LegendumTabOptions
+    opts: LegendumTabOptions,
   ) =>
     | { ok: true; data: LegendumTab }
     | { ok: false; error: string; code?: string };
@@ -167,7 +167,7 @@ export interface LegendumTab {
 }
 
 export interface LinkControllerState {
-  status: 'loading' | 'unlinked' | 'linking' | 'linked' | 'error';
+  status: "loading" | "unlinked" | "linking" | "linked" | "error";
   balance: number | null;
   error: string | null;
 }
@@ -232,17 +232,17 @@ export interface LinkWidgetOptions {
 
 /** Handlers for `mock()` — optional overrides; omitted methods use SDK defaults. */
 export interface LegendumMockHandlers {
-  charge?: LegendumServiceClient['charge'];
-  balance?: LegendumServiceClient['balance'];
-  reserve?: LegendumServiceClient['reserve'];
-  requestLink?: LegendumServiceClient['requestLink'];
-  pollLink?: LegendumServiceClient['pollLink'];
-  waitForLink?: LegendumServiceClient['waitForLink'];
-  authUrl?: LegendumServiceClient['authUrl'];
-  authAndLinkUrl?: LegendumServiceClient['authAndLinkUrl'];
-  exchangeCode?: LegendumServiceClient['exchangeCode'];
-  linkAccount?: LegendumServiceClient['linkAccount'];
-  tab?: LegendumServiceClient['tab'];
+  charge?: LegendumServiceClient["charge"];
+  balance?: LegendumServiceClient["balance"];
+  reserve?: LegendumServiceClient["reserve"];
+  requestLink?: LegendumServiceClient["requestLink"];
+  pollLink?: LegendumServiceClient["pollLink"];
+  waitForLink?: LegendumServiceClient["waitForLink"];
+  authUrl?: LegendumServiceClient["authUrl"];
+  authAndLinkUrl?: LegendumServiceClient["authAndLinkUrl"];
+  exchangeCode?: LegendumServiceClient["exchangeCode"];
+  linkAccount?: LegendumServiceClient["linkAccount"];
+  tab?: LegendumServiceClient["tab"];
 }
 
 export interface LegendumCreateConfig {
@@ -256,7 +256,7 @@ declare const legendum: {
   service: (config?: LegendumCreateConfig) => LegendumServiceClient;
   account: (
     accountKey: string,
-    config?: { baseUrl?: string }
+    config?: { baseUrl?: string },
   ) => LegendumAccountClient;
   client: (existing?: LegendumServiceClient) => LegendumSafeClient;
   isConfigured: () => boolean;
@@ -265,28 +265,28 @@ declare const legendum: {
     accountToken: string,
     amount: number,
     description: string,
-    opts?: { key?: string; meta?: unknown }
-  ) => ReturnType<LegendumServiceClient['charge']>;
+    opts?: { key?: string; meta?: unknown },
+  ) => ReturnType<LegendumServiceClient["charge"]>;
   balance: (
-    accountToken: string
-  ) => ReturnType<LegendumServiceClient['balance']>;
+    accountToken: string,
+  ) => ReturnType<LegendumServiceClient["balance"]>;
   reserve: (
     accountToken: string,
     amount: number,
-    description?: string
-  ) => ReturnType<LegendumServiceClient['reserve']>;
-  requestLink: () => ReturnType<LegendumServiceClient['requestLink']>;
+    description?: string,
+  ) => ReturnType<LegendumServiceClient["reserve"]>;
+  requestLink: () => ReturnType<LegendumServiceClient["requestLink"]>;
   pollLink: (
-    requestId: string
-  ) => ReturnType<LegendumServiceClient['pollLink']>;
+    requestId: string,
+  ) => ReturnType<LegendumServiceClient["pollLink"]>;
   waitForLink: (
     requestId: string,
-    opts?: { interval?: number; timeout?: number }
-  ) => ReturnType<LegendumServiceClient['waitForLink']>;
+    opts?: { interval?: number; timeout?: number },
+  ) => ReturnType<LegendumServiceClient["waitForLink"]>;
   tab: (
     accountToken: string,
     description: string,
-    opts: LegendumTabOptions
+    opts: LegendumTabOptions,
   ) => LegendumTab;
 
   authUrl: (opts: { redirectUri: string; state: string }) => string;
@@ -297,11 +297,11 @@ declare const legendum: {
   }) => string;
   exchangeCode: (
     code: string,
-    redirectUri: string
-  ) => ReturnType<LegendumServiceClient['exchangeCode']>;
+    redirectUri: string,
+  ) => ReturnType<LegendumServiceClient["exchangeCode"]>;
   linkAccount: (
-    accountKey: string
-  ) => ReturnType<LegendumServiceClient['linkAccount']>;
+    accountKey: string,
+  ) => ReturnType<LegendumServiceClient["linkAccount"]>;
 
   button: (opts?: ButtonOptions) => string;
   linkWidget: (opts: LinkWidgetOptions) => string;
@@ -311,7 +311,7 @@ declare const legendum: {
   mock: (handlers?: LegendumMockHandlers) => void;
   unmock: () => void;
 
-  version: '1.0.0';
+  version: "1.0.0";
 };
 
 export default legendum;

@@ -1,19 +1,17 @@
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import yaml from 'js-yaml';
-import { basename, resolve } from 'path';
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { basename, resolve } from "node:path";
+import yaml from "js-yaml";
 import {
   addProject,
   getAccountKey,
   getApiUrl,
   isDaemonRunning,
-  readConfig,
-  writeConfig,
-} from '../lib/config';
+} from "../lib/config";
 
 const DEFAULT_CONFIG = {
-  name: '',
-  sources: ['src/**/*', 'docs/**/*', 'config/**/*', 'README.md'],
-  exclude: ['node_modules/**', '*.db', '.env', 'wiki/**'],
+  name: "",
+  sources: ["src/**/*", "docs/**/*", "config/**/*", "README.md"],
+  exclude: ["node_modules/**", "*.db", ".env", "wiki/**"],
 };
 
 async function prompt(message: string): Promise<string> {
@@ -21,16 +19,16 @@ async function prompt(message: string): Promise<string> {
   for await (const line of console) {
     return line.trim();
   }
-  return '';
+  return "";
 }
 
 export default async function init(_args: string[]) {
   const projectDir = process.cwd();
-  const wikiDir = resolve(projectDir, 'wiki');
-  const configPath = resolve(wikiDir, 'config.yml');
+  const wikiDir = resolve(projectDir, "wiki");
+  const configPath = resolve(wikiDir, "config.yml");
 
   if (existsSync(configPath)) {
-    console.log('wiki/config.yml already exists in this project.');
+    console.log("wiki/config.yml already exists in this project.");
     return;
   }
 
@@ -41,10 +39,10 @@ export default async function init(_args: string[]) {
   const config = { ...DEFAULT_CONFIG, name };
   writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }));
   writeFileSync(
-    resolve(wikiDir, 'index.md'),
-    `# ${name}\n\nWiki index — maintained automatically.\n`
+    resolve(wikiDir, "index.md"),
+    `# ${name}\n\nWiki index — maintained automatically.\n`,
   );
-  writeFileSync(resolve(wikiDir, 'log.md'), `# Changelog\n`);
+  writeFileSync(resolve(wikiDir, "log.md"), `# Changelog\n`);
 
   // Register with projects list
   addProject({ path: projectDir, name });
@@ -57,23 +55,23 @@ export default async function init(_args: string[]) {
   // 2. Login if first time (no config exists yet)
   let accountKey = getAccountKey();
   const firstTime = !existsSync(
-    resolve(process.env.HOME || '~', '.config/wikis/config.yaml')
+    resolve(process.env.HOME || "~", ".config/wikis/config.yaml"),
   );
   if (!accountKey && firstTime) {
     console.log();
     const key = await prompt(
-      'Legendum account key (see legendum.co.uk), or press Enter to skip: '
+      "Legendum account key (see legendum.co.uk), or press Enter to skip: ",
     );
     if (key) {
       try {
-        const { default: login } = await import('./login');
+        const { default: login } = await import("./login");
         await login([key]);
         accountKey = key;
       } catch {
-        console.log('Login failed — continuing without authentication.');
+        console.log("Login failed — continuing without authentication.");
       }
     } else {
-      console.log('Skipped — running in self-hosted mode.');
+      console.log("Skipped — running in self-hosted mode.");
     }
   }
 
@@ -82,28 +80,28 @@ export default async function init(_args: string[]) {
   const mcpConfig = {
     mcpServers: {
       wikis: {
-        type: 'http',
+        type: "http",
         url: `${apiUrl}/api/mcp`,
         headers: {
-          Authorization: 'Bearer <your-legendum-account-key>',
+          Authorization: "Bearer <your-legendum-account-key>",
         },
       },
     },
   };
   writeFileSync(
-    resolve(wikiDir, 'mcp.json'),
-    JSON.stringify(mcpConfig, null, 2) + '\n'
+    resolve(wikiDir, "mcp.json"),
+    `${JSON.stringify(mcpConfig, null, 2)}\n`,
   );
   console.log(
-    `  mcp:     wiki/mcp.json (edit to add your Legendum account key)`
+    `  mcp:     wiki/mcp.json (edit to add your Legendum account key)`,
   );
 
   // 4. First sync
   if (accountKey) {
     console.log();
-    console.log('Syncing sources...');
+    console.log("Syncing sources...");
     try {
-      const { default: sync } = await import('./sync');
+      const { default: sync } = await import("./sync");
       await sync([]);
     } catch (e) {
       console.error(`Sync failed: ${(e as Error).message}`);
@@ -115,13 +113,13 @@ export default async function init(_args: string[]) {
   if (!isDaemonRunning()) {
     console.log();
     try {
-      const { default: start } = await import('./start');
+      const { default: start } = await import("./start");
       await start([]);
-    } catch (e) {
+    } catch (_e) {
       console.log("Could not start daemon. Run 'wikis start' manually.");
     }
   }
 
   console.log();
-  console.log('Done! Edit wiki/config.yml to customize sources.');
+  console.log("Done! Edit wiki/config.yml to customize sources.");
 }

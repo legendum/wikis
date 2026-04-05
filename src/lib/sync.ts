@@ -25,7 +25,7 @@ export interface SyncPlan {
 export function diffManifests(
   local: Manifest,
   remote: Manifest,
-  lastKnown: Manifest = {}
+  lastKnown: Manifest = {},
 ): SyncPlan {
   const plan: SyncPlan = {
     push: [],
@@ -93,7 +93,7 @@ export function diffManifests(
  * Build a manifest from a list of files with their hashes and modification times.
  */
 export function buildManifest(
-  files: { path: string; hash: string; modified: string }[]
+  files: { path: string; hash: string; modified: string }[],
 ): Manifest {
   const manifest: Manifest = {};
   for (const f of files) {

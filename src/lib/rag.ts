@@ -1,4 +1,4 @@
-import { OLLAMA_EMBED_MODEL, OLLAMA_URL } from './constants';
+import { OLLAMA_EMBED_MODEL, OLLAMA_URL } from "./constants";
 
 /**
  * Get embeddings from Ollama for a list of texts.
@@ -9,14 +9,14 @@ export async function embed(texts: string[]): Promise<Float32Array[]> {
 
   for (const text of texts) {
     const res = await fetch(`${OLLAMA_URL}/api/embed`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, input: text }),
     });
 
     if (!res.ok) {
       throw new Error(
-        `Ollama embed failed (${res.status}): ${await res.text()}`
+        `Ollama embed failed (${res.status}): ${await res.text()}`,
       );
     }
 

@@ -1,18 +1,16 @@
 /**
  * Auth routes — "Login with Legendum" OAuth flow + cookie sessions.
  */
-import { Elysia, t } from 'elysia';
-import { storeAccountKey } from '../lib/auth';
+import { Elysia, t } from "elysia";
 import {
-  HOST,
   IS_HOSTED,
   LEGENDUM_API_KEY,
   LEGENDUM_BASE_URL,
   LEGENDUM_SECRET,
   PORT,
-} from '../lib/constants';
-import { createUser, getGlobalDb, getUserByEmail } from '../lib/db';
-import legendum from '../lib/legendum.js';
+} from "../lib/constants";
+import { createUser, getGlobalDb, getUserByEmail } from "../lib/db";
+import legendum from "../lib/legendum.js";
 
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
@@ -40,16 +38,16 @@ function validateState(state: string, cookieState?: string): boolean {
 }
 
 function createSession(userId: number): string {
-  const token = `wks_${crypto.randomUUID().replace(/-/g, '')}`;
+  const token = `wks_${crypto.randomUUID().replace(/-/g, "")}`;
   getGlobalDb()
-    .prepare('INSERT INTO sessions (token, user_id) VALUES (?, ?)')
+    .prepare("INSERT INTO sessions (token, user_id) VALUES (?, ?)")
     .run(token, userId);
   return token;
 }
 
 export function getSessionUser(token: string): number | null {
   const row = getGlobalDb()
-    .prepare('SELECT user_id FROM sessions WHERE token = ?')
+    .prepare("SELECT user_id FROM sessions WHERE token = ?")
     .get(token) as { user_id: number } | null;
   return row?.user_id ?? null;
 }
@@ -68,17 +66,17 @@ export const authRoutes = new Elysia()
    * GET /login — start "Login with Legendum" (login + link in one flow).
    * Redirects browser to Legendum.
    */
-  .get('/login', async ({ cookie: { wikis_state }, redirect, set }) => {
+  .get("/login", async ({ cookie: { wikis_state }, redirect, set }) => {
     const client = getClient();
     if (!client) {
       set.status = 404;
-      return 'Login with Legendum is not configured on this server.';
+      return "Login with Legendum is not configured on this server.";
     }
 
     const state = crypto.randomUUID();
     wikis_state.value = state;
     wikis_state.httpOnly = true;
-    wikis_state.sameSite = 'lax';
+    wikis_state.sameSite = "lax";
     wikis_state.maxAge = STATE_MAX_AGE;
 
     saveState(state);
@@ -98,7 +96,7 @@ export const authRoutes = new Elysia()
    * GET /auth/callback — handle redirect back from Legendum.
    */
   .get(
-    '/auth/callback',
+    "/auth/callback",
     async ({
       query,
       cookie: { wikis_session, wikis_state },
@@ -109,19 +107,19 @@ export const authRoutes = new Elysia()
 
       if (!code || !state) {
         set.status = 400;
-        return 'Missing code or state';
+        return "Missing code or state";
       }
 
       if (!validateState(state, wikis_state.value as string | undefined)) {
         set.status = 403;
-        return 'Invalid state parameter';
+        return "Invalid state parameter";
       }
       wikis_state.remove();
 
       const client = getClient();
       if (!client) {
         set.status = 500;
-        return 'Legendum not configured';
+        return "Legendum not configured";
       }
 
       type ExchangeResult = {
@@ -135,7 +133,7 @@ export const authRoutes = new Elysia()
       try {
         exchanged = (await client.exchangeCode(
           code,
-          `${BASE_URL}/auth/callback`
+          `${BASE_URL}/auth/callback`,
         )) as ExchangeResult;
       } catch (e) {
         set.status = 401;
@@ -145,7 +143,7 @@ export const authRoutes = new Elysia()
       const { email } = exchanged;
       if (!email) {
         set.status = 502;
-        return 'Could not read email from Legendum';
+        return "Could not read email from Legendum";
       }
 
       // Find or create user
@@ -162,7 +160,7 @@ export const authRoutes = new Elysia()
         exchanged.account_token ?? exchanged.legendum_token ?? exchanged.token;
       if (serviceToken) {
         getGlobalDb()
-          .prepare('UPDATE users SET legendum_token = ? WHERE id = ?')
+          .prepare("UPDATE users SET legendum_token = ? WHERE id = ?")
           .run(serviceToken, userId);
       }
 
@@ -170,25 +168,25 @@ export const authRoutes = new Elysia()
       const sessionToken = createSession(userId);
       wikis_session.value = sessionToken;
       wikis_session.httpOnly = true;
-      wikis_session.sameSite = 'lax';
+      wikis_session.sameSite = "lax";
       wikis_session.maxAge = SESSION_MAX_AGE;
-      wikis_session.path = '/';
+      wikis_session.path = "/";
 
-      return redirect('/');
+      return redirect("/");
     },
     {
       query: t.Object({
         code: t.Optional(t.String()),
         state: t.Optional(t.String()),
       }),
-    }
+    },
   )
 
   /** POST /auth/logout */
-  .post('/auth/logout', ({ cookie: { wikis_session }, redirect }) => {
+  .post("/auth/logout", ({ cookie: { wikis_session }, redirect }) => {
     const token = wikis_session.value as string | undefined;
     if (token)
-      getGlobalDb().prepare('DELETE FROM sessions WHERE token = ?').run(token);
+      getGlobalDb().prepare("DELETE FROM sessions WHERE token = ?").run(token);
     wikis_session.remove();
-    return redirect('/');
+    return redirect("/");
   });

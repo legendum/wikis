@@ -8,14 +8,14 @@
  * Flow: reserve → LLM call → settle (actual tokens) → charge shortfall if needed
  */
 
-import type { Database } from 'bun:sqlite';
-import { readFileSync } from 'fs';
-import yaml from 'js-yaml';
-import { resolve } from 'path';
-import { type Provider, resolveProvider } from './ai';
-import { CONFIG_DIR, IS_HOSTED } from './constants';
-import type { LegendumReservation } from './legendum.js';
-import { log } from './log';
+import type { Database } from "bun:sqlite";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import yaml from "js-yaml";
+import { resolveProvider } from "./ai";
+import { CONFIG_DIR, IS_HOSTED } from "./constants";
+import type { LegendumReservation } from "./legendum.js";
+import { log } from "./log";
 
 // --- Pricing config ---
 
@@ -28,8 +28,8 @@ interface ModelPricing {
   minimum_charge?: number;
 }
 
-const pricingPath = resolve(CONFIG_DIR, 'pricing.yml');
-const pricingConfig = yaml.load(readFileSync(pricingPath, 'utf8')) as {
+const pricingPath = resolve(CONFIG_DIR, "pricing.yml");
+const pricingConfig = yaml.load(readFileSync(pricingPath, "utf8")) as {
   models: Record<string, ModelPricing>;
 };
 
@@ -45,7 +45,7 @@ export function getModelPricing(provider?: string): ModelPricing {
 export function calculateCredits(
   inputTokens: number,
   outputTokens: number,
-  provider?: string
+  provider?: string,
 ): number {
   const cfg = getModelPricing(provider);
   const inputCredits =
@@ -55,7 +55,7 @@ export function calculateCredits(
   const markup = 1 + (cfg.markup_percent || 0) / 100;
   return Math.max(
     cfg.minimum_charge || 1,
-    Math.ceil((inputCredits + outputCredits) * markup)
+    Math.ceil((inputCredits + outputCredits) * markup),
   );
 }
 
@@ -67,11 +67,11 @@ export function reserveAmount(provider?: string): number {
 
 // --- Legendum integration ---
 
-type LegendumModule = typeof import('./legendum.js').default;
+type LegendumModule = typeof import("./legendum.js").default;
 let legendum: LegendumModule | null = null;
 async function getLegendum(): Promise<LegendumModule> {
   if (!legendum) {
-    const mod = await import('./legendum.js');
+    const mod = await import("./legendum.js");
     legendum = mod.default || mod;
   }
   return legendum;
@@ -85,8 +85,8 @@ export function shouldBill(userHasOwnKey: boolean): boolean {
 export interface Reservation {
   id: string;
   amount: number;
-  settle: LegendumReservation['settle'];
-  release: LegendumReservation['release'];
+  settle: LegendumReservation["settle"];
+  release: LegendumReservation["release"];
 }
 
 /**
@@ -97,7 +97,7 @@ export interface Reservation {
 export async function reserve(
   legendumToken: string | null,
   amount: number,
-  description: string
+  description: string,
 ): Promise<Reservation | null> {
   if (!legendumToken) return null;
 
@@ -119,7 +119,7 @@ export async function settle(
   inputTokens: number,
   outputTokens: number,
   description: string,
-  event?: { db: Database; wikiId: number }
+  event?: { db: Database; wikiId: number },
 ): Promise<number> {
   const totalCredits = calculateCredits(inputTokens, outputTokens);
 
@@ -128,9 +128,9 @@ export async function settle(
     recordEvent(
       event.db,
       event.wikiId,
-      'credits_used',
+      "credits_used",
       totalCredits,
-      description
+      description,
     );
   }
 
@@ -144,7 +144,7 @@ export async function settle(
     await reservation.settle(settleAmount);
     log.info(`Settled ${settleAmount} credits (of ${totalCredits} total)`);
   } catch (e) {
-    log.error('Failed to settle reservation', { error: (e as Error).message });
+    log.error("Failed to settle reservation", { error: (e as Error).message });
   }
 
   // Charge shortfall if actual cost exceeded reservation
@@ -178,25 +178,25 @@ export async function release(reservation: Reservation | null): Promise<void> {
   if (!reservation) return;
   try {
     await reservation.release();
-    log.info('Released reservation');
+    log.info("Released reservation");
   } catch (e) {
-    log.error('Failed to release reservation', { error: (e as Error).message });
+    log.error("Failed to release reservation", { error: (e as Error).message });
   }
 }
 
 // --- Event logging (for usage tracking) ---
 
-type EventType = 'source_push' | 'wiki_update' | 'credits_used' | 'storage';
+type EventType = "source_push" | "wiki_update" | "credits_used" | "storage";
 
 export function recordEvent(
   db: Database,
   wikiId: number | null,
   type: EventType,
   count = 1,
-  description = ''
+  description = "",
 ): void {
   db.prepare(
-    'INSERT INTO events (wiki_id, type, count, description) VALUES (?, ?, ?, ?)'
+    "INSERT INTO events (wiki_id, type, count, description) VALUES (?, ?, ?, ?)",
   ).run(wikiId, type, count, description);
 }
 
@@ -207,7 +207,7 @@ export function getMonthlyUsage(db: Database): Record<EventType, number> {
 
   const rows = db
     .prepare(
-      'SELECT type, SUM(count) as total FROM events WHERE created_at >= ? GROUP BY type'
+      "SELECT type, SUM(count) as total FROM events WHERE created_at >= ? GROUP BY type",
     )
     .all(periodStart) as { type: EventType; total: number }[];
 

@@ -7,54 +7,54 @@
  * 3. Asks the LLM to generate/update wiki pages
  * 4. Writes results to the wiki_files and wiki_chunks tables
  */
-import type { Database } from 'bun:sqlite';
-import { type ChatMessage, chat } from './ai';
+import type { Database } from "bun:sqlite";
+import { type ChatMessage, chat } from "./ai";
 import {
   type Reservation,
   release,
   reserve,
   settle,
   shouldBill,
-} from './billing';
-import { consolidatePages } from './consolidate';
-import { indexFile } from './indexer';
-import { log } from './log';
-import { getFile, listFiles, recordUpdate, upsertFile } from './storage';
+} from "./billing";
+import { consolidatePages } from "./consolidate";
+import { indexFile } from "./indexer";
+import { log } from "./log";
+import { getFile, listFiles, recordUpdate, upsertFile } from "./storage";
 
-const SPECIAL_PAGES = new Set(['index.md', 'log.md']);
+const SPECIAL_PAGES = new Set(["index.md", "log.md"]);
 
 /** Get the directory tree of all source files for a wiki. */
 function getSourceTree(db: Database, wikiId: number): string {
   const rows = db
     .prepare(
-      'SELECT DISTINCT path FROM source_files WHERE wiki_id = ? ORDER BY path'
+      "SELECT DISTINCT path FROM source_files WHERE wiki_id = ? ORDER BY path",
     )
     .all(wikiId) as { path: string }[];
 
   const dirs = new Set<string>();
   const lines: string[] = [];
   for (const row of rows) {
-    const parts = row.path.split('/');
+    const parts = row.path.split("/");
     for (let i = 0; i < parts.length - 1; i++) {
-      const dirPath = parts.slice(0, i + 1).join('/');
+      const dirPath = parts.slice(0, i + 1).join("/");
       if (!dirs.has(dirPath)) {
         dirs.add(dirPath);
-        lines.push(`${'  '.repeat(i)}${parts[i]}/`);
+        lines.push(`${"  ".repeat(i)}${parts[i]}/`);
       }
     }
-    lines.push(`${'  '.repeat(parts.length - 1)}${parts[parts.length - 1]}`);
+    lines.push(`${"  ".repeat(parts.length - 1)}${parts[parts.length - 1]}`);
   }
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 /** Read a source file from the DB. */
 function getSourceFile(
   db: Database,
   wikiId: number,
-  path: string
+  path: string,
 ): string | null {
   const row = db
-    .prepare('SELECT content FROM source_files WHERE wiki_id = ? AND path = ?')
+    .prepare("SELECT content FROM source_files WHERE wiki_id = ? AND path = ?")
     .get(wikiId, path) as { content: string } | null;
   return row?.content ?? null;
 }
@@ -63,7 +63,7 @@ function getSourceFile(
 function getSourcePaths(db: Database, wikiId: number): string[] {
   const rows = db
     .prepare(
-      'SELECT DISTINCT path FROM source_files WHERE wiki_id = ? ORDER BY path'
+      "SELECT DISTINCT path FROM source_files WHERE wiki_id = ? ORDER BY path",
     )
     .all(wikiId) as { path: string }[];
   return rows.map((r) => r.path);
@@ -75,7 +75,7 @@ async function pickFilesForSection(
   wikiId: number,
   config: WikiConfig,
   section: { name: string; description: string },
-  tree: string
+  tree: string,
 ): Promise<{
   files: string[];
   usage: { input_tokens: number; output_tokens: number };
@@ -87,11 +87,11 @@ async function pickFilesForSection(
   const result = await chat({
     messages: [
       {
-        role: 'system',
+        role: "system",
         content: `You select source files relevant to a wiki page. Given a directory tree and a page description, respond with ONLY a JSON array of file paths. Choose all files that could be relevant to the topic, even peripherally. Include up to 20 files to ensure comprehensive coverage.`,
       },
       {
-        role: 'user',
+        role: "user",
         content: `Which source files are relevant for the "${section.name}" wiki page?
 
 Page description: ${section.description}
@@ -105,16 +105,16 @@ ${tree}`,
   let files: string[] = [];
   try {
     const cleaned = result.content
-      .replace(/```(?:json)?\n?/g, '')
-      .replace(/```$/g, '')
+      .replace(/```(?:json)?\n?/g, "")
+      .replace(/```$/g, "")
       .trim();
     files = JSON.parse(cleaned);
     if (!Array.isArray(files)) files = [];
-    files = files.filter((f) => typeof f === 'string');
+    files = files.filter((f) => typeof f === "string");
   } catch {
     log.warn(
       `Section "${section.name}": failed to parse file list, using all files`,
-      { wiki: config.name }
+      { wiki: config.name },
     );
     files = getSourcePaths(db, wikiId);
   }
@@ -130,22 +130,22 @@ function setWikiPaths(
   db: Database,
   wikiId: number,
   sourcePaths: string[],
-  wikiPath: string
+  wikiPath: string,
 ): void {
   for (const srcPath of sourcePaths) {
     const row = db
       .prepare(
-        'SELECT wiki_paths FROM source_files WHERE wiki_id = ? AND path = ?'
+        "SELECT wiki_paths FROM source_files WHERE wiki_id = ? AND path = ?",
       )
       .get(wikiId, srcPath) as { wiki_paths: string } | null;
     if (!row) continue;
 
-    const existing = row.wiki_paths ? row.wiki_paths.split(',') : [];
+    const existing = row.wiki_paths ? row.wiki_paths.split(",") : [];
     if (!existing.includes(wikiPath)) {
       existing.push(wikiPath);
       db.prepare(
-        'UPDATE source_files SET wiki_paths = ? WHERE wiki_id = ? AND path = ?'
-      ).run(existing.join(','), wikiId, srcPath);
+        "UPDATE source_files SET wiki_paths = ? WHERE wiki_id = ? AND path = ?",
+      ).run(existing.join(","), wikiId, srcPath);
     }
   }
 }
@@ -165,11 +165,11 @@ function findChangedPages(db: Database, wikiId: number): Set<string> {
 
   const pages = new Set<string>();
   for (const row of rows) {
-    for (const wikiPath of row.wiki_paths.split(',')) {
+    for (const wikiPath of row.wiki_paths.split(",")) {
       if (!wikiPath) continue;
       const wf = db
         .prepare(
-          'SELECT modified_at FROM wiki_files WHERE wiki_id = ? AND path = ?'
+          "SELECT modified_at FROM wiki_files WHERE wiki_id = ? AND path = ?",
         )
         .get(wikiId, wikiPath) as { modified_at: string } | null;
       if (wf && row.src_modified > wf.modified_at) {
@@ -195,7 +195,7 @@ export interface AgentResult {
   usage: { input_tokens: number; output_tokens: number };
 }
 
-import { PAGE_PREVIEW_LENGTH } from './constants';
+import { PAGE_PREVIEW_LENGTH } from "./constants";
 
 const RESERVE_CREDITS = 50;
 
@@ -207,7 +207,7 @@ async function billedChat(
   db: Database,
   wikiId: number,
   config: WikiConfig,
-  options: { messages: ChatMessage[]; description?: string }
+  options: { messages: ChatMessage[]; description?: string },
 ): Promise<{
   content: string;
   usage: { input_tokens: number; output_tokens: number };
@@ -218,11 +218,11 @@ async function billedChat(
   const bill = config.legendumToken && shouldBill(!!config.userHasOwnKey);
   let reservation: Reservation | null = null;
 
-  if (bill) {
+  if (bill && config.legendumToken) {
     reservation = await reserve(
-      config.legendumToken!,
+      config.legendumToken,
       RESERVE_CREDITS,
-      description
+      description,
     );
   }
 
@@ -231,11 +231,11 @@ async function billedChat(
 
     await settle(
       reservation,
-      config.legendumToken!,
+      config.legendumToken,
       result.usage.input_tokens,
       result.usage.output_tokens,
       description,
-      { db, wikiId }
+      { db, wikiId },
     );
 
     return result;
@@ -251,16 +251,16 @@ async function billedChat(
 async function planSections(
   db: Database,
   wikiId: number,
-  config: WikiConfig
+  config: WikiConfig,
 ): Promise<{
   sections: { name: string; description: string }[];
   usage: { input_tokens: number; output_tokens: number };
 }> {
   const tree = getSourceTree(db, wikiId);
-  const readme = getSourceFile(db, wikiId, 'README.md');
+  const readme = getSourceFile(db, wikiId, "README.md");
 
   const existingPages = listFiles(db, wikiId)
-    .filter((f) => f.path.endsWith('.md') && !SPECIAL_PAGES.has(f.path))
+    .filter((f) => f.path.endsWith(".md") && !SPECIAL_PAGES.has(f.path))
     .map((f) => f.path);
 
   log.info(`Planning sections for ${config.name} (calling LLM...)`, {
@@ -270,7 +270,7 @@ async function planSections(
   const result = await chat({
     messages: [
       {
-        role: 'system',
+        role: "system",
         content: `You are a wiki planner. Given a project's README and source directory tree, propose up to 24 wiki pages that would best document it. Each page should cover a distinct topic. Do NOT include an "index" or "home" page — that is generated separately.
 
 Respond with ONLY a JSON array of objects, each with "name" and "description" fields. Example:
@@ -282,10 +282,10 @@ Respond with ONLY a JSON array of objects, each with "name" and "description" fi
 Keep names short (1–3 words). Descriptions should be one sentence. Choose fewer pages for small projects, more for large ones. Each page must have a distinct topic — do not create multiple pages about the same thing.`,
       },
       {
-        role: 'user',
+        role: "user",
         content: `Propose wiki pages for the "${config.name}" project.
 
-${existingPages.length > 0 ? `Existing pages (update or keep these, avoid creating overlapping ones):\n${existingPages.join('\n')}\n\n` : ''}${readme ? `README:\n${readme.slice(0, PAGE_PREVIEW_LENGTH)}\n\n` : ''}Directory tree:
+${existingPages.length > 0 ? `Existing pages (update or keep these, avoid creating overlapping ones):\n${existingPages.join("\n")}\n\n` : ""}${readme ? `README:\n${readme.slice(0, PAGE_PREVIEW_LENGTH)}\n\n` : ""}Directory tree:
 ${tree}`,
       },
     ],
@@ -294,35 +294,35 @@ ${tree}`,
   let sections: { name: string; description: string }[] = [];
   try {
     const cleaned = result.content
-      .replace(/```(?:json)?\n?/g, '')
-      .replace(/```$/g, '')
+      .replace(/```(?:json)?\n?/g, "")
+      .replace(/```$/g, "")
       .trim();
     sections = JSON.parse(cleaned);
     if (!Array.isArray(sections)) sections = [];
     sections = sections.filter((s) => s.name && s.description);
   } catch {
-    log.warn('Failed to parse planned sections, using defaults', {
+    log.warn("Failed to parse planned sections, using defaults", {
       wiki: config.name,
     });
     sections = [
       {
-        name: 'Overview',
-        description: 'What this project does, its purpose, and key features',
+        name: "Overview",
+        description: "What this project does, its purpose, and key features",
       },
       {
-        name: 'Architecture',
+        name: "Architecture",
         description:
-          'How the system is designed — components, data flow, key decisions',
+          "How the system is designed — components, data flow, key decisions",
       },
       {
-        name: 'Getting Started',
-        description: 'Installation, setup, and configuration',
+        name: "Getting Started",
+        description: "Installation, setup, and configuration",
       },
     ];
   }
 
   log.info(
-    `Planned ${sections.length} sections for ${config.name}: ${sections.map((s) => s.name).join(', ')}`
+    `Planned ${sections.length} sections for ${config.name}: ${sections.map((s) => s.name).join(", ")}`,
   );
   return { sections, usage: result.usage };
 }
@@ -335,7 +335,7 @@ export async function runAgent(
   db: Database,
   wikiId: number,
   config: WikiConfig,
-  opts: { reason?: string; force?: boolean } = {}
+  opts: { reason?: string; force?: boolean } = {},
 ): Promise<AgentResult> {
   const result: AgentResult = {
     pagesUpdated: [],
@@ -347,20 +347,20 @@ export async function runAgent(
   let sections = config.sections;
   if (!sections || sections.length === 0) {
     const existingPages = listFiles(db, wikiId).filter(
-      (f) => f.path.endsWith('.md') && !SPECIAL_PAGES.has(f.path)
+      (f) => f.path.endsWith(".md") && !SPECIAL_PAGES.has(f.path),
     );
     if (existingPages.length > 0 && !opts.force) {
       // Wiki already has pages — no need to re-plan
       log.info(
         `${config.name}: ${existingPages.length} pages already exist, skipping section planning`,
-        { wiki: config.name }
+        { wiki: config.name },
       );
       sections = existingPages.map((f) => {
         const name = f.path
-          .replace(/\.md$/, '')
-          .replace(/-/g, ' ')
+          .replace(/\.md$/, "")
+          .replace(/-/g, " ")
           .replace(/\b\w/g, (c) => c.toUpperCase());
-        return { name, description: '' };
+        return { name, description: "" };
       });
     } else {
       try {
@@ -369,24 +369,24 @@ export async function runAgent(
         result.usage.input_tokens += plan.usage.input_tokens;
         result.usage.output_tokens += plan.usage.output_tokens;
       } catch (e) {
-        log.error('Section planning failed, using defaults', {
+        log.error("Section planning failed, using defaults", {
           wiki: config.name,
           error: (e as Error).message,
         });
         sections = [
           {
-            name: 'Overview',
+            name: "Overview",
             description:
-              'What this project does, its purpose, and key features',
+              "What this project does, its purpose, and key features",
           },
           {
-            name: 'Architecture',
+            name: "Architecture",
             description:
-              'How the system is designed — components, data flow, key decisions',
+              "How the system is designed — components, data flow, key decisions",
           },
           {
-            name: 'Getting Started',
-            description: 'Installation, setup, and configuration',
+            name: "Getting Started",
+            description: "Installation, setup, and configuration",
           },
         ];
       }
@@ -395,7 +395,7 @@ export async function runAgent(
 
   // Shared chat function for consolidation passes
   const chatFn = (opts: {
-    messages: import('./ai').ChatMessage[];
+    messages: import("./ai").ChatMessage[];
     description?: string;
   }) => billedChat(db, wikiId, config, opts);
 
@@ -428,7 +428,7 @@ export async function runAgent(
     } catch (e) {
       log.error(
         `Section "${section.name}": file selection failed, using all files`,
-        { wiki: config.name, error: (e as Error).message }
+        { wiki: config.name, error: (e as Error).message },
       );
       selectedFiles = getSourcePaths(db, wikiId);
     }
@@ -439,7 +439,7 @@ export async function runAgent(
       const content = getSourceFile(db, wikiId, path);
       if (content) sourceContent.push(`--- ${path} ---\n${content}`);
     }
-    const sourceContext = sourceContent.join('\n\n');
+    const sourceContext = sourceContent.join("\n\n");
 
     if (sourceContent.length === 0) {
       log.info(`Section "${section.name}": skipped (no source files found)`, {
@@ -448,22 +448,22 @@ export async function runAgent(
       continue;
     }
 
-    const action = existing?.content ? 'regenerating' : 'creating';
+    const action = existing?.content ? "regenerating" : "creating";
     log.info(
       `Section "${section.name}": ${sourceContent.length} source files, ${action} (calling LLM...)`,
-      { wiki: config.name }
+      { wiki: config.name },
     );
 
-    const allPages = sections.map((s) => `${slugify(s.name)}.md`).join('\n');
+    const allPages = sections.map((s) => `${slugify(s.name)}.md`).join("\n");
     const messages = buildMessages(
       config,
       section,
       sourceContext,
       existing?.content || null,
-      allPages
+      allPages,
     );
 
-    let llmResult;
+    let llmResult: any;
     try {
       llmResult = await billedChat(db, wikiId, config, {
         messages,
@@ -471,7 +471,7 @@ export async function runAgent(
       });
       log.info(
         `Section "${section.name}": LLM responded (${llmResult.usage.output_tokens} tokens)`,
-        { wiki: config.name }
+        { wiki: config.name },
       );
     } catch (e) {
       log.error(`Section "${section.name}": LLM failed`, {
@@ -489,7 +489,7 @@ export async function runAgent(
 
     const now = new Date().toISOString();
     upsertFile(db, wikiId, pagePath, content, now);
-    await indexFile(db, wikiId, 'wiki_chunks', pagePath, content, {
+    await indexFile(db, wikiId, "wiki_chunks", pagePath, content, {
       embeddings: true,
     });
     setWikiPaths(db, wikiId, selectedFiles, pagePath);
@@ -499,7 +499,7 @@ export async function runAgent(
       config,
       pagePath,
       existing?.content || null,
-      content
+      content,
     );
     if (existing?.content) {
       result.pagesUpdated.push(pagePath);
@@ -512,8 +512,8 @@ export async function runAgent(
   const changedPages = findChangedPages(db, wikiId);
   if (changedPages.size > 0) {
     log.info(
-      `Found ${changedPages.size} pages to regenerate: ${[...changedPages].join(', ')}`,
-      { wiki: config.name }
+      `Found ${changedPages.size} pages to regenerate: ${[...changedPages].join(", ")}`,
+      { wiki: config.name },
     );
   }
   for (const pagePath of changedPages) {
@@ -523,7 +523,7 @@ export async function runAgent(
     // Get source files that feed into this page (contained in comma-separated list)
     const sourceRows = db
       .prepare(
-        `SELECT path FROM source_files WHERE wiki_id = ? AND INSTR(wiki_paths, ?) > 0`
+        `SELECT path FROM source_files WHERE wiki_id = ? AND INSTR(wiki_paths, ?) > 0`,
       )
       .all(wikiId, pagePath) as { path: string }[];
 
@@ -537,24 +537,24 @@ export async function runAgent(
     if (sourceContent.length === 0) continue;
 
     const pageName = pagePath
-      .replace(/\.md$/, '')
-      .replace(/-/g, ' ')
+      .replace(/\.md$/, "")
+      .replace(/-/g, " ")
       .replace(/\b\w/g, (c) => c.toUpperCase());
     log.info(
       `Regenerating "${pagePath}": ${sourceContent.length} source files changed (calling LLM...)`,
-      { wiki: config.name }
+      { wiki: config.name },
     );
 
     const allPages = listFiles(db, wikiId)
-      .filter((f) => f.path.endsWith('.md'))
+      .filter((f) => f.path.endsWith(".md"))
       .map((f) => f.path)
-      .join('\n');
+      .join("\n");
     const messages = buildMessages(
       config,
-      { name: pageName, description: '' },
-      sourceContent.join('\n\n'),
+      { name: pageName, description: "" },
+      sourceContent.join("\n\n"),
       existing.content,
-      allPages
+      allPages,
     );
 
     try {
@@ -569,7 +569,7 @@ export async function runAgent(
       if (content) {
         const now = new Date().toISOString();
         upsertFile(db, wikiId, pagePath, content, now);
-        await indexFile(db, wikiId, 'wiki_chunks', pagePath, content, {
+        await indexFile(db, wikiId, "wiki_chunks", pagePath, content, {
           embeddings: true,
         });
         await summarizeChange(
@@ -578,12 +578,12 @@ export async function runAgent(
           config,
           pagePath,
           existing.content,
-          content
+          content,
         );
         result.pagesUpdated.push(pagePath);
         log.info(
           `Regenerated "${pagePath}" (${llmResult.usage.output_tokens} tokens)`,
-          { wiki: config.name }
+          { wiki: config.name },
         );
       }
     } catch (e) {
@@ -611,7 +611,7 @@ export async function runAgent(
   } else {
     log.info(
       `No pages changed for ${config.name}, skipping index/description update`,
-      { wiki: config.name }
+      { wiki: config.name },
     );
   }
 
@@ -623,11 +623,11 @@ function buildMessages(
   section: { name: string; description: string },
   sourceContext: string,
   existingContent: string | null,
-  allPages: string
+  allPages: string,
 ): ChatMessage[] {
   const messages: ChatMessage[] = [
     {
-      role: 'system',
+      role: "system",
       content: `You are a wiki maintainer for the "${config.name}" project. You write clear, well-structured markdown wiki pages.
 
 The wiki should explain the project to a model who has limited context and background knowledge. Assume the reader has never seen the codebase and needs to understand how things work and why.
@@ -643,16 +643,16 @@ Rules:
 - Output ONLY the markdown content for the page`,
     },
     {
-      role: 'user',
-      content: `${existingContent ? 'Update' : 'Create'} the wiki page for section "${section.name}".
+      role: "user",
+      content: `${existingContent ? "Update" : "Create"} the wiki page for section "${section.name}".
 
 Section description: ${section.description}
 
-${existingContent ? `Current page content:\n\`\`\`markdown\n${existingContent}\n\`\`\`` : 'This page does not exist yet.'}
+${existingContent ? `Current page content:\n\`\`\`markdown\n${existingContent}\n\`\`\`` : "This page does not exist yet."}
 
 Wiki pages (ONLY link to these):\n${allPages}
 
-Source material from the project:\n${sourceContext || '(no relevant sources found)'}`,
+Source material from the project:\n${sourceContext || "(no relevant sources found)"}`,
     },
   ];
 
@@ -669,7 +669,7 @@ export async function fillMissingPages(
   wikiId: number,
   config: WikiConfig,
   result: AgentResult,
-  depth = 0
+  depth = 0,
 ): Promise<void> {
   const MAX_DEPTH = 3;
   if (depth >= MAX_DEPTH) return;
@@ -683,15 +683,16 @@ export async function fillMissingPages(
   const linkRe = /\[([^\]]+)\]\(([^)]+\.md)\)/g;
 
   for (const file of files) {
-    if (!file.path.endsWith('.md')) continue;
+    if (!file.path.endsWith(".md")) continue;
     const content = getFile(db, wikiId, file.path)?.content;
     if (!content) continue;
 
-    const lines = content.split('\n');
+    const lines = content.split("\n");
     for (let i = 0; i < lines.length; i++) {
-      let match;
+      let match: RegExpExecArray | null;
+      // biome-ignore lint/suspicious/noAssignInExpressions: regex loop pattern
       while ((match = linkRe.exec(lines[i])) !== null) {
-        const href = match[2].replace(/^\.\//, '');
+        const href = match[2].replace(/^\.\//, "");
         if (existingPaths.has(href) || SPECIAL_PAGES.has(href)) continue;
 
         if (!missing.has(href)) {
@@ -701,9 +702,9 @@ export async function fillMissingPages(
         const start = Math.max(0, i - 2);
         const end = Math.min(lines.length, i + 3);
         missing
-          .get(href)!
-          .contexts.push(
-            `From ${file.path}:\n${lines.slice(start, end).join('\n')}`
+          .get(href)
+          ?.contexts.push(
+            `From ${file.path}:\n${lines.slice(start, end).join("\n")}`,
           );
       }
     }
@@ -712,18 +713,18 @@ export async function fillMissingPages(
   if (missing.size === 0) return;
 
   log.info(
-    `Found ${missing.size} missing pages to fill: ${[...missing.keys()].join(', ')}`,
-    { wiki: config.name }
+    `Found ${missing.size} missing pages to fill: ${[...missing.keys()].join(", ")}`,
+    { wiki: config.name },
   );
 
   const allPages = [...existingPaths, ...missing.keys()]
-    .filter((p) => p.endsWith('.md'))
-    .join('\n');
+    .filter((p) => p.endsWith(".md"))
+    .join("\n");
 
   for (const [pagePath, info] of missing) {
     const pageName = pagePath
-      .replace(/\.md$/, '')
-      .replace(/-/g, ' ')
+      .replace(/\.md$/, "")
+      .replace(/-/g, " ")
       .replace(/\b\w/g, (c) => c.toUpperCase());
 
     // Search for relevant source material using the link text
@@ -735,7 +736,7 @@ export async function fillMissingPages(
         wikiId,
         config,
         { name: info.linkText, description: info.contexts[0] || info.linkText },
-        tree
+        tree,
       );
       selectedFiles = pick.files;
       result.usage.input_tokens += pick.usage.input_tokens;
@@ -748,11 +749,11 @@ export async function fillMissingPages(
       const c = getSourceFile(db, wikiId, p);
       if (c) sourceContent.push(`--- ${p} ---\n${c}`);
     }
-    const sourceContext = sourceContent.join('\n\n');
+    const sourceContext = sourceContent.join("\n\n");
 
     const messages: ChatMessage[] = [
       {
-        role: 'system',
+        role: "system",
         content: `You are a wiki maintainer for the "${config.name}" project. You write clear, well-structured markdown wiki pages.
 
 Rules:
@@ -766,23 +767,23 @@ Rules:
 - Output ONLY the markdown content for the page`,
       },
       {
-        role: 'user',
+        role: "user",
         content: `Create the wiki page "${pageName}" (${pagePath}).
 
 This page was referenced by other wiki pages in these contexts:
-${info.contexts.join('\n\n')}
+${info.contexts.join("\n\n")}
 
 Wiki pages (ONLY link to these):
 ${allPages}
 
 Source material from the project:
-${sourceContext || '(no relevant sources found)'}`,
+${sourceContext || "(no relevant sources found)"}`,
       },
     ];
 
     log.info(
       `Filling missing page "${pagePath}" (${sourceContent.length} source files, calling LLM...)`,
-      { wiki: config.name }
+      { wiki: config.name },
     );
 
     try {
@@ -798,7 +799,7 @@ ${sourceContext || '(no relevant sources found)'}`,
 
       const now = new Date().toISOString();
       upsertFile(db, wikiId, pagePath, content, now);
-      await indexFile(db, wikiId, 'wiki_chunks', pagePath, content, {
+      await indexFile(db, wikiId, "wiki_chunks", pagePath, content, {
         embeddings: true,
       });
       setWikiPaths(db, wikiId, selectedFiles, pagePath);
@@ -808,7 +809,7 @@ ${sourceContext || '(no relevant sources found)'}`,
 
       log.info(
         `Filled missing page "${pagePath}" (${llmResult.usage.output_tokens} tokens)`,
-        { wiki: config.name }
+        { wiki: config.name },
       );
     } catch (e) {
       log.error(`Failed to fill missing page "${pagePath}"`, {
@@ -832,8 +833,8 @@ export function extractMarkdown(content: string): string | null {
 
   // Strip outer ```markdown ... ``` fences if present
   const extracted = content
-    .replace(/^```(?:markdown|md)?\n?/, '')
-    .replace(/\n?```$/, '')
+    .replace(/^```(?:markdown|md)?\n?/, "")
+    .replace(/\n?```$/, "")
     .trim();
 
   // Ensure all code blocks are properly closed
@@ -841,17 +842,17 @@ export function extractMarkdown(content: string): string | null {
 }
 
 function closeCodeBlocks(content: string): string {
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   let inCodeBlock = false;
-  let codeBlockStart = '';
+  let _codeBlockStart = "";
   const result: string[] = [];
 
   for (const line of lines) {
-    if (line.startsWith('```')) {
+    if (line.startsWith("```")) {
       if (inCodeBlock) {
         // Closing a code block
-        if (!line.trim().endsWith('```')) {
-          result.push(line + '```');
+        if (!line.trim().endsWith("```")) {
+          result.push(`${line}\`\`\``);
         } else {
           result.push(line);
         }
@@ -859,7 +860,7 @@ function closeCodeBlocks(content: string): string {
       } else {
         // Starting a code block
         inCodeBlock = true;
-        codeBlockStart = line;
+        _codeBlockStart = line;
         result.push(line);
       }
     } else {
@@ -869,39 +870,39 @@ function closeCodeBlocks(content: string): string {
 
   // If we're still in a code block at the end, close it
   if (inCodeBlock) {
-    result.push('```');
+    result.push("```");
   }
 
-  return result.join('\n');
+  return result.join("\n");
 }
 
 /** Ask the LLM for a one-line summary of what changed on a page. */
 async function summarizeChange(
   db: Database,
   wikiId: number,
-  config: WikiConfig,
+  _config: WikiConfig,
   pagePath: string,
   oldContent: string | null,
-  newContent: string
+  newContent: string,
 ): Promise<void> {
-  const action = oldContent ? 'Updated' : 'Created';
+  const action = oldContent ? "Updated" : "Created";
   try {
     const result = await chat({
       messages: [
         {
-          role: 'system',
+          role: "system",
           content:
-            'Respond with exactly one sentence (max 80 chars) summarizing what changed. No quotes, no markdown, no period at the end.',
+            "Respond with exactly one sentence (max 80 chars) summarizing what changed. No quotes, no markdown, no period at the end.",
         },
         {
-          role: 'user',
+          role: "user",
           content: oldContent
             ? `Summarize the changes between old and new versions of "${pagePath}".\n\nOld:\n${oldContent.slice(0, 1000)}\n\nNew:\n${newContent.slice(0, 1000)}`
             : `Summarize what the new wiki page "${pagePath}" covers.\n\n${newContent.slice(0, 1000)}`,
         },
       ],
     });
-    const summary = result.content.trim().replace(/\.+$/, '');
+    const summary = result.content.trim().replace(/\.+$/, "");
     if (summary) {
       recordUpdate(db, wikiId, pagePath, `${action}: ${summary}`);
     }
@@ -913,26 +914,26 @@ async function summarizeChange(
 function slugify(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 async function updateIndex(
   db: Database,
   wikiId: number,
   config: WikiConfig,
-  agentResult: AgentResult
+  _agentResult: AgentResult,
 ): Promise<void> {
   const files = listFiles(db, wikiId);
   const pages = files.filter(
-    (f) => f.path.endsWith('.md') && !SPECIAL_PAGES.has(f.path)
+    (f) => f.path.endsWith(".md") && !SPECIAL_PAGES.has(f.path),
   );
 
   // Build page list for context
   const pageList = pages.map((p) => {
-    const name = p.path.replace('.md', '');
+    const name = p.path.replace(".md", "");
     const title = name
-      .replace(/-/g, ' ')
+      .replace(/-/g, " ")
       .replace(/\b\w/g, (c) => c.toUpperCase());
     return { path: p.path, title, slug: name };
   });
@@ -940,11 +941,11 @@ async function updateIndex(
   // Ask the LLM to write a proper index
   const pageListMd = pageList
     .map((p) => `- [${p.title}](${p.slug}.md)`)
-    .join('\n');
+    .join("\n");
 
   // Get README for context
-  const readme = getSourceFile(db, wikiId, 'README.md');
-  const readmeContext = readme || '';
+  const readme = getSourceFile(db, wikiId, "README.md");
+  const readmeContext = readme || "";
 
   log.info(`Generating index page for ${config.name} (calling LLM...)`, {
     wiki: config.name,
@@ -955,11 +956,11 @@ async function updateIndex(
       description: `Wiki ${config.name} — index.md`,
       messages: [
         {
-          role: 'system',
+          role: "system",
           content: `You write concise wiki index pages. Output ONLY markdown. No meta-commentary.`,
         },
         {
-          role: 'user',
+          role: "user",
           content: `Write the index page for the "${config.name}" wiki. Include:
 1. A brief intro paragraph explaining what ${config.name} is (2-3 sentences)
 2. A "Pages" section with this exact list:
@@ -967,7 +968,7 @@ async function updateIndex(
 ${pageListMd}
 
 Source context about the project:
-${readmeContext || '(none)'}`,
+${readmeContext || "(none)"}`,
         },
       ],
     });
@@ -975,14 +976,14 @@ ${readmeContext || '(none)'}`,
     const content = extractMarkdown(result.content);
     if (content) {
       const now = new Date().toISOString();
-      upsertFile(db, wikiId, 'index.md', content, now);
-      await indexFile(db, wikiId, 'wiki_chunks', 'index.md', content, {
+      upsertFile(db, wikiId, "index.md", content, now);
+      await indexFile(db, wikiId, "wiki_chunks", "index.md", content, {
         embeddings: true,
       });
       return;
     }
   } catch (e) {
-    log.warn('LLM index generation failed, using fallback', {
+    log.warn("LLM index generation failed, using fallback", {
       error: (e as Error).message,
     });
   }
@@ -991,11 +992,11 @@ ${readmeContext || '(none)'}`,
   let index = `# ${config.name}\n\n`;
   index += `Wiki for the ${config.name} project.\n\n`;
   index += `## Pages\n\n`;
-  index += pageListMd + '\n';
+  index += `${pageListMd}\n`;
 
   const now = new Date().toISOString();
-  upsertFile(db, wikiId, 'index.md', index, now);
-  await indexFile(db, wikiId, 'wiki_chunks', 'index.md', index, {
+  upsertFile(db, wikiId, "index.md", index, now);
+  await indexFile(db, wikiId, "wiki_chunks", "index.md", index, {
     embeddings: true,
   });
 }
@@ -1003,11 +1004,11 @@ ${readmeContext || '(none)'}`,
 async function appendLog(
   db: Database,
   wikiId: number,
-  config: WikiConfig,
+  _config: WikiConfig,
   result: AgentResult,
-  reason?: string
+  reason?: string,
 ): Promise<void> {
-  const existing = getFile(db, wikiId, 'log.md');
+  const existing = getFile(db, wikiId, "log.md");
   const date = new Date().toISOString().slice(0, 10);
   const time = new Date().toISOString().slice(11, 16);
 
@@ -1016,24 +1017,24 @@ async function appendLog(
   entry += `\n`;
 
   if (result.pagesCreated.length) {
-    entry += `- Created: ${result.pagesCreated.join(', ')}\n`;
+    entry += `- Created: ${result.pagesCreated.join(", ")}\n`;
   }
   if (result.pagesUpdated.length) {
-    entry += `- Updated: ${result.pagesUpdated.join(', ')}\n`;
+    entry += `- Updated: ${result.pagesUpdated.join(", ")}\n`;
   }
   entry += `- Tokens: ${result.usage.input_tokens} in / ${result.usage.output_tokens} out\n`;
 
-  const content = (existing?.content || '# Changelog\n') + entry;
+  const content = (existing?.content || "# Changelog\n") + entry;
   const now = new Date().toISOString();
-  upsertFile(db, wikiId, 'log.md', content, now);
+  upsertFile(db, wikiId, "log.md", content, now);
 }
 
 async function updateDescription(
   db: Database,
   wikiId: number,
-  config: WikiConfig
+  config: WikiConfig,
 ): Promise<void> {
-  const readme = getSourceFile(db, wikiId, 'README.md');
+  const readme = getSourceFile(db, wikiId, "README.md");
   const context = readme || config.name;
 
   log.info(`Generating description for ${config.name} (calling LLM...)`, {
@@ -1045,26 +1046,26 @@ async function updateDescription(
       description: `Wiki ${config.name} — description`,
       messages: [
         {
-          role: 'system',
+          role: "system",
           content:
-            'Respond with exactly one sentence, no more than 100 characters. No quotes, no markdown.',
+            "Respond with exactly one sentence, no more than 100 characters. No quotes, no markdown.",
         },
         {
-          role: 'user',
+          role: "user",
           content: `Describe the "${config.name}" project in one short sentence.\n\nContext:\n${context || config.name}`,
         },
       ],
     });
 
-    const desc = result.content.trim().replace(/^["']|["']$/g, '');
+    const desc = result.content.trim().replace(/^["']|["']$/g, "");
     if (desc) {
-      db.prepare('UPDATE wikis SET description = ? WHERE id = ?').run(
+      db.prepare("UPDATE wikis SET description = ? WHERE id = ?").run(
         desc,
-        wikiId
+        wikiId,
       );
     }
   } catch (e) {
-    log.warn('Description generation failed', {
+    log.warn("Description generation failed", {
       wiki: config.name,
       error: (e as Error).message,
     });

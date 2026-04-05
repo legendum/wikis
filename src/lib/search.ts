@@ -1,10 +1,6 @@
-import type { Database } from 'bun:sqlite';
-import {
-  SEARCH_DEFAULT_LIMIT,
-  SEARCH_FTS_WEIGHT,
-  SEARCH_VECTOR_WEIGHT,
-} from './constants';
-import { cosineSimilarity, deserializeEmbedding, embedOne } from './rag';
+import type { Database } from "bun:sqlite";
+import { SEARCH_DEFAULT_LIMIT } from "./constants";
+import { cosineSimilarity, deserializeEmbedding, embedOne } from "./rag";
 
 export interface SearchResult {
   path: string;
@@ -31,27 +27,27 @@ interface ChunkRow {
  */
 function escapeFtsQuery(query: string): string {
   // Strip everything except word chars, whitespace, and * (for prefix)
-  const cleaned = query.replace(/[^\w\s*]/g, ' ');
+  const cleaned = query.replace(/[^\w\s*]/g, " ");
   const words = cleaned
     .split(/\s+/)
     .filter(Boolean)
     .map((word) => {
       // Strip leading/trailing asterisks, then re-add one trailing * if present
-      const base = word.replace(/\*/g, '');
+      const base = word.replace(/\*/g, "");
       if (!base) return null; // was only special chars
-      return word.includes('*') ? `"${base}"*` : `"${base}"`;
+      return word.includes("*") ? `"${base}"*` : `"${base}"`;
     })
     .filter(Boolean);
 
-  if (words.length === 0) return '';
-  return words.join(' OR ');
+  if (words.length === 0) return "";
+  return words.join(" OR ");
 }
 
 function ftsSearch(
   db: Database,
   wikiId: number,
   query: string,
-  limit: number
+  limit: number,
 ): FtsRow[] {
   const escaped = escapeFtsQuery(query);
   if (!escaped) return [];
@@ -63,7 +59,7 @@ function ftsSearch(
          FROM wiki_chunks_fts f
          JOIN wiki_chunks c ON c.id = f.rowid
          WHERE wiki_chunks_fts MATCH ? AND c.wiki_id = ?
-         ORDER BY f.rank LIMIT ?`
+         ORDER BY f.rank LIMIT ?`,
       )
       .all(escaped, wikiId, limit) as FtsRow[];
   } catch {
@@ -74,15 +70,15 @@ function ftsSearch(
 /**
  * Vector search — scans wiki chunk embeddings, ranks by cosine similarity.
  */
-function vectorSearch(
+function _vectorSearch(
   db: Database,
   wikiId: number,
   queryEmbedding: Float32Array,
-  limit: number
+  limit: number,
 ): { path: string; content: string; score: number }[] {
   const rows = db
     .prepare(
-      `SELECT id, path, content, embedding FROM wiki_chunks WHERE wiki_id = ? AND embedding IS NOT NULL`
+      `SELECT id, path, content, embedding FROM wiki_chunks WHERE wiki_id = ? AND embedding IS NOT NULL`,
     )
     .all(wikiId) as ChunkRow[];
 
@@ -92,7 +88,7 @@ function vectorSearch(
       content: row.content,
       score: cosineSimilarity(
         queryEmbedding,
-        deserializeEmbedding(row.embedding!)
+        deserializeEmbedding(row.embedding || new Uint8Array()),
       ),
     }))
     .sort((a, b) => b.score - a.score)
@@ -112,7 +108,7 @@ export async function search(
   db: Database,
   wikiId: number,
   query: string,
-  opts: { limit?: number } = {}
+  opts: { limit?: number } = {},
 ): Promise<SearchResult[]> {
   const limit = opts.limit ?? SEARCH_DEFAULT_LIMIT;
   const FTS_CANDIDATES = 50;
@@ -148,7 +144,7 @@ export async function search(
   for (const row of ftsResults) {
     const chunkRow = db
       .prepare(
-        'SELECT embedding FROM wiki_chunks WHERE wiki_id = ? AND path = ? AND content = ? AND embedding IS NOT NULL LIMIT 1'
+        "SELECT embedding FROM wiki_chunks WHERE wiki_id = ? AND path = ? AND content = ? AND embedding IS NOT NULL LIMIT 1",
       )
       .get(wikiId, row.path, row.content) as { embedding: Buffer } | null;
 
@@ -156,7 +152,7 @@ export async function search(
     if (chunkRow?.embedding) {
       score = cosineSimilarity(
         queryEmbedding,
-        deserializeEmbedding(chunkRow.embedding)
+        deserializeEmbedding(chunkRow.embedding),
       );
     } else {
       score = normalizeFtsRank(row.rank, worstRank) * 0.5;

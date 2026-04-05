@@ -1,7 +1,7 @@
-import { Database } from 'bun:sqlite';
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { resolve } from 'path';
-import { createTestDataDir } from '../helpers/db';
+import { Database } from "bun:sqlite";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { resolve } from "node:path";
+import { createTestDataDir } from "../helpers/db";
 
 /**
  * Tests for findChangedPages logic.
@@ -57,11 +57,11 @@ function findChangedPages(db: Database, wikiId: number): Set<string> {
 
   const pages = new Set<string>();
   for (const row of rows) {
-    for (const wikiPath of row.wiki_paths.split(',')) {
+    for (const wikiPath of row.wiki_paths.split(",")) {
       if (!wikiPath) continue;
       const wf = db
         .prepare(
-          'SELECT modified_at FROM wiki_files WHERE wiki_id = ? AND path = ?'
+          "SELECT modified_at FROM wiki_files WHERE wiki_id = ? AND path = ?",
         )
         .get(wikiId, wikiPath) as { modified_at: string } | null;
       if (wf && row.src_modified > wf.modified_at) {
@@ -72,19 +72,19 @@ function findChangedPages(db: Database, wikiId: number): Set<string> {
   return pages;
 }
 
-describe('findChangedPages', () => {
+describe("findChangedPages", () => {
   let tmp: { dir: string; cleanup: () => void };
   let db: Database;
   let wikiId: number;
 
   beforeEach(() => {
     tmp = createTestDataDir();
-    db = new Database(resolve(tmp.dir, 'test.db'), { create: true });
-    db.exec('PRAGMA foreign_keys = ON');
+    db = new Database(resolve(tmp.dir, "test.db"), { create: true });
+    db.exec("PRAGMA foreign_keys = ON");
     db.exec(SCHEMA);
-    db.prepare('INSERT INTO wikis (name) VALUES (?)').run('test-project');
+    db.prepare("INSERT INTO wikis (name) VALUES (?)").run("test-project");
     wikiId = (
-      db.prepare('SELECT id FROM wikis WHERE name = ?').get('test-project') as {
+      db.prepare("SELECT id FROM wikis WHERE name = ?").get("test-project") as {
         id: number;
       }
     ).id;
@@ -95,113 +95,113 @@ describe('findChangedPages', () => {
     tmp.cleanup();
   });
 
-  it('returns empty when no source files have wiki_paths', () => {
+  it("returns empty when no source files have wiki_paths", () => {
     db.prepare(
-      'INSERT INTO source_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(wikiId, 'src/app.ts', 'code', 'abc', '2026-01-01T00:00:00Z');
+      "INSERT INTO source_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(wikiId, "src/app.ts", "code", "abc", "2026-01-01T00:00:00Z");
 
     expect(findChangedPages(db, wikiId).size).toBe(0);
   });
 
-  it('returns empty when source is older than wiki page', () => {
+  it("returns empty when source is older than wiki page", () => {
     db.prepare(
-      'INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)'
+      "INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(
       wikiId,
-      'src/app.ts',
-      'code',
-      'abc',
-      'overview.md',
-      '2026-01-01T00:00:00Z'
+      "src/app.ts",
+      "code",
+      "abc",
+      "overview.md",
+      "2026-01-01T00:00:00Z",
     );
 
     db.prepare(
-      'INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(wikiId, 'overview.md', '# Overview', 'def', '2026-01-02T00:00:00Z');
+      "INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(wikiId, "overview.md", "# Overview", "def", "2026-01-02T00:00:00Z");
 
     expect(findChangedPages(db, wikiId).size).toBe(0);
   });
 
-  it('detects page needing update when source is newer', () => {
+  it("detects page needing update when source is newer", () => {
     db.prepare(
-      'INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)'
+      "INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(
       wikiId,
-      'src/app.ts',
-      'code v2',
-      'abc2',
-      'overview.md',
-      '2026-01-03T00:00:00Z'
+      "src/app.ts",
+      "code v2",
+      "abc2",
+      "overview.md",
+      "2026-01-03T00:00:00Z",
     );
 
     db.prepare(
-      'INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(wikiId, 'overview.md', '# Overview', 'def', '2026-01-01T00:00:00Z');
+      "INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(wikiId, "overview.md", "# Overview", "def", "2026-01-01T00:00:00Z");
 
     const changed = findChangedPages(db, wikiId);
     expect(changed.size).toBe(1);
-    expect(changed.has('overview.md')).toBe(true);
+    expect(changed.has("overview.md")).toBe(true);
   });
 
-  it('handles comma-separated wiki_paths correctly', () => {
+  it("handles comma-separated wiki_paths correctly", () => {
     db.prepare(
-      'INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)'
+      "INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(
       wikiId,
-      'README.md',
-      'readme',
-      'abc',
-      'overview.md,setup.md,api.md',
-      '2026-01-05T00:00:00Z'
+      "README.md",
+      "readme",
+      "abc",
+      "overview.md,setup.md,api.md",
+      "2026-01-05T00:00:00Z",
     );
 
     // overview.md is up to date
     db.prepare(
-      'INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(wikiId, 'overview.md', '# Overview', 'def', '2026-01-06T00:00:00Z');
+      "INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(wikiId, "overview.md", "# Overview", "def", "2026-01-06T00:00:00Z");
 
     // setup.md is stale
     db.prepare(
-      'INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(wikiId, 'setup.md', '# Setup', 'ghi', '2026-01-01T00:00:00Z');
+      "INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(wikiId, "setup.md", "# Setup", "ghi", "2026-01-01T00:00:00Z");
 
     // api.md is stale
     db.prepare(
-      'INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(wikiId, 'api.md', '# API', 'jkl', '2026-01-02T00:00:00Z');
+      "INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(wikiId, "api.md", "# API", "jkl", "2026-01-02T00:00:00Z");
 
     const changed = findChangedPages(db, wikiId);
     expect(changed.size).toBe(2);
-    expect(changed.has('setup.md')).toBe(true);
-    expect(changed.has('api.md')).toBe(true);
-    expect(changed.has('overview.md')).toBe(false);
+    expect(changed.has("setup.md")).toBe(true);
+    expect(changed.has("api.md")).toBe(true);
+    expect(changed.has("overview.md")).toBe(false);
   });
 
-  it('does not match partial path names', () => {
+  it("does not match partial path names", () => {
     // api.md should NOT match api-overview.md
     db.prepare(
-      'INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)'
+      "INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(
       wikiId,
-      'src/api.ts',
-      'code',
-      'abc',
-      'api.md',
-      '2026-01-05T00:00:00Z'
+      "src/api.ts",
+      "code",
+      "abc",
+      "api.md",
+      "2026-01-05T00:00:00Z",
     );
 
     db.prepare(
-      'INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(wikiId, 'api.md', '# API', 'def', '2026-01-06T00:00:00Z');
+      "INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(wikiId, "api.md", "# API", "def", "2026-01-06T00:00:00Z");
 
     db.prepare(
-      'INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)'
+      "INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)",
     ).run(
       wikiId,
-      'api-overview.md',
-      '# API Overview',
-      'ghi',
-      '2026-01-01T00:00:00Z'
+      "api-overview.md",
+      "# API Overview",
+      "ghi",
+      "2026-01-01T00:00:00Z",
     );
 
     const changed = findChangedPages(db, wikiId);
@@ -209,49 +209,49 @@ describe('findChangedPages', () => {
     expect(changed.size).toBe(0);
   });
 
-  it('handles multiple source files pointing to same wiki page', () => {
+  it("handles multiple source files pointing to same wiki page", () => {
     db.prepare(
-      'INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)'
+      "INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(
       wikiId,
-      'src/auth.ts',
-      'code',
-      'abc',
-      'auth.md',
-      '2026-01-01T00:00:00Z'
+      "src/auth.ts",
+      "code",
+      "abc",
+      "auth.md",
+      "2026-01-01T00:00:00Z",
     );
 
     db.prepare(
-      'INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)'
+      "INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(
       wikiId,
-      'src/session.ts',
-      'code',
-      'def',
-      'auth.md',
-      '2026-01-10T00:00:00Z'
+      "src/session.ts",
+      "code",
+      "def",
+      "auth.md",
+      "2026-01-10T00:00:00Z",
     );
 
     db.prepare(
-      'INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(wikiId, 'auth.md', '# Auth', 'ghi', '2026-01-05T00:00:00Z');
+      "INSERT INTO wiki_files (wiki_id, path, content, hash, modified_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(wikiId, "auth.md", "# Auth", "ghi", "2026-01-05T00:00:00Z");
 
     const changed = findChangedPages(db, wikiId);
     // session.ts is newer than auth.md, so auth.md needs update
     expect(changed.size).toBe(1);
-    expect(changed.has('auth.md')).toBe(true);
+    expect(changed.has("auth.md")).toBe(true);
   });
 
-  it('ignores source files where wiki page does not exist yet', () => {
+  it("ignores source files where wiki page does not exist yet", () => {
     db.prepare(
-      'INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)'
+      "INSERT INTO source_files (wiki_id, path, content, hash, wiki_paths, modified_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(
       wikiId,
-      'src/new.ts',
-      'code',
-      'abc',
-      'new-feature.md',
-      '2026-01-10T00:00:00Z'
+      "src/new.ts",
+      "code",
+      "abc",
+      "new-feature.md",
+      "2026-01-10T00:00:00Z",
     );
 
     // new-feature.md doesn't exist in wiki_files

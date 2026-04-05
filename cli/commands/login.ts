@@ -4,27 +4,27 @@
  * Usage:
  *   wikis login <lak_...>
  */
-import { getApiUrl, readConfig, writeConfig } from '../lib/config';
+import { getApiUrl, readConfig, writeConfig } from "../lib/config";
 
 export default async function login(args: string[]) {
   // Accept key as first arg, or after --key for backwards compat
-  const keyIdx = args.indexOf('--key');
+  const keyIdx = args.indexOf("--key");
   const key = keyIdx !== -1 ? args[keyIdx + 1] : args[0];
 
-  if (!key || !key.startsWith('lak_')) {
-    console.error('Usage: wikis login <account-key>');
-    console.error('  Get your key at legendum.co.uk');
+  if (!key?.startsWith("lak_")) {
+    console.error("Usage: wikis login <account-key>");
+    console.error("  Get your key at legendum.co.uk");
     process.exit(1);
   }
 
   const apiUrl = getApiUrl();
 
   // Register key with server
-  console.log('Logging in...');
+  console.log("Logging in...");
   try {
     const res = await fetch(`${apiUrl}/api/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key }),
     });
 
@@ -35,7 +35,7 @@ export default async function login(args: string[]) {
     };
 
     if (!data.ok) {
-      console.error(`Login failed: ${data.message || 'invalid key'}`);
+      console.error(`Login failed: ${data.message || "invalid key"}`);
       process.exit(1);
     }
 

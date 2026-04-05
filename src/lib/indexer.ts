@@ -1,8 +1,8 @@
-import type { Database } from 'bun:sqlite';
-import { type Chunk, chunkText } from './chunking';
-import { embed, serializeEmbedding } from './rag';
+import type { Database } from "bun:sqlite";
+import { type Chunk, chunkText } from "./chunking";
+import { embed, serializeEmbedding } from "./rag";
 
-type ChunkTable = 'wiki_chunks';
+type ChunkTable = "wiki_chunks";
 
 /**
  * Index a file into a chunk table (source or wiki).
@@ -15,7 +15,7 @@ export async function indexFile(
   table: ChunkTable,
   path: string,
   content: string,
-  opts: { embeddings?: boolean } = {}
+  opts: { embeddings?: boolean } = {},
 ): Promise<number> {
   const chunks = chunkText(path, content);
   if (chunks.length === 0) return 0;
@@ -23,12 +23,12 @@ export async function indexFile(
   // Delete existing chunks for this file
   db.prepare(`DELETE FROM ${table} WHERE wiki_id = ? AND path = ?`).run(
     wikiId,
-    path
+    path,
   );
 
   // Insert new chunks
   const insert = db.prepare(
-    `INSERT INTO ${table} (wiki_id, path, chunk_index, content) VALUES (?, ?, ?, ?)`
+    `INSERT INTO ${table} (wiki_id, path, chunk_index, content) VALUES (?, ?, ?, ?)`,
   );
 
   const insertMany = db.transaction((chunks: Chunk[]) => {
@@ -59,13 +59,13 @@ async function storeEmbeddings(
   table: ChunkTable,
   wikiId: number,
   path: string,
-  chunks: Chunk[]
+  chunks: Chunk[],
 ): Promise<void> {
   const texts = chunks.map((c) => c.content);
   const embeddings = await embed(texts);
 
   const update = db.prepare(
-    `UPDATE ${table} SET embedding = ? WHERE wiki_id = ? AND path = ? AND chunk_index = ?`
+    `UPDATE ${table} SET embedding = ? WHERE wiki_id = ? AND path = ? AND chunk_index = ?`,
   );
 
   const updateMany = db.transaction(() => {
@@ -74,7 +74,7 @@ async function storeEmbeddings(
         serializeEmbedding(embeddings[i]),
         wikiId,
         path,
-        chunks[i].chunkIndex
+        chunks[i].chunkIndex,
       );
     }
   });
@@ -90,7 +90,7 @@ export async function indexFiles(
   wikiId: number,
   table: ChunkTable,
   files: { path: string; content: string }[],
-  opts: { embeddings?: boolean } = {}
+  opts: { embeddings?: boolean } = {},
 ): Promise<number> {
   let total = 0;
   for (const file of files) {
@@ -106,10 +106,10 @@ export function removeFile(
   db: Database,
   wikiId: number,
   table: ChunkTable,
-  path: string
+  path: string,
 ): void {
   db.prepare(`DELETE FROM ${table} WHERE wiki_id = ? AND path = ?`).run(
     wikiId,
-    path
+    path,
   );
 }

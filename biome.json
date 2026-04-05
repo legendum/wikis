@@ -1,13 +1,25 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.10/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/build",
+      "!**/legendum.js"
+    ]
+  },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
     "lineEnding": "lf"
-  },
-  "files": {
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/legendum.js"]
   },
   "linter": {
     "enabled": true,
@@ -18,19 +30,14 @@
         "noExplicitAny": "off"
       },
       "style": {
-        "useTemplate": "error"
+        "useTemplate": "error",
+        "noDescendingSpecificity": "off"
       }
     }
   },
   "javascript": {
     "formatter": {
-      "quoteStyle": "single",
-      "trailingCommas": "es5"
-    }
-  },
-  "json": {
-    "formatter": {
-      "enabled": true
+      "quoteStyle": "double"
     }
   }
 }

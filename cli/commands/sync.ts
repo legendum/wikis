@@ -5,21 +5,20 @@
  *   wikis sync         — sync current project
  *   wikis sync --all   — sync all registered projects
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const { parse } = Bun.YAML;
 
-import { CryptoHasher, Glob } from 'bun';
+import { CryptoHasher, Glob } from "bun";
 import {
   getAccountKey,
   getApiUrl,
-  readHashes,
   readProjects,
   writeHashes,
   writeProjects,
-} from '../lib/config';
-import { ensureWikiRow } from '../lib/ensure-wiki';
+} from "../lib/config";
+import { ensureWikiRow } from "../lib/ensure-wiki";
 
 interface WikiConfig {
   name: string;
@@ -28,13 +27,13 @@ interface WikiConfig {
 }
 
 async function syncProject(projectDir: string) {
-  const configPath = resolve(projectDir, 'wiki', 'config.yml');
+  const configPath = resolve(projectDir, "wiki", "config.yml");
   if (!existsSync(configPath)) {
     console.error(`  No wiki/config.yml in ${projectDir}. Skipping.`);
     return;
   }
 
-  const config = parse(readFileSync(configPath, 'utf8')) as WikiConfig;
+  const config = parse(readFileSync(configPath, "utf8")) as WikiConfig;
   const apiUrl = getApiUrl();
   const accountKey = getAccountKey();
 
@@ -44,7 +43,7 @@ async function syncProject(projectDir: string) {
   }
 
   const headers = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     Authorization: `Bearer ${accountKey}`,
   };
 
@@ -64,7 +63,7 @@ async function syncProject(projectDir: string) {
       if (!existsSync(fullPath)) continue;
       sourceFiles.push({
         path: file,
-        content: readFileSync(fullPath, 'utf8'),
+        content: readFileSync(fullPath, "utf8"),
       });
     }
   }
@@ -79,14 +78,14 @@ async function syncProject(projectDir: string) {
 
   // Push sources
   const pushRes = await fetch(`${apiUrl}/api/sources`, {
-    method: 'POST',
+    method: "POST",
     headers,
     body: JSON.stringify({ wiki: config.name, files: sourceFiles }),
   });
 
   if (!pushRes.ok) {
     console.error(
-      `  Source push failed: ${pushRes.status} ${pushRes.statusText}`
+      `  Source push failed: ${pushRes.status} ${pushRes.statusText}`,
     );
     return;
   }
@@ -97,14 +96,14 @@ async function syncProject(projectDir: string) {
     data?: { files: number; changed: number; queued_regeneration?: boolean };
   };
   if (!pushData.ok) {
-    console.error(`  Source push failed: ${pushData.error || 'unknown error'}`);
+    console.error(`  Source push failed: ${pushData.error || "unknown error"}`);
     return;
   }
   const changed = pushData.data?.changed || 0;
   const queued = pushData.data?.queued_regeneration;
   if (changed === 0 && queued) {
     console.log(
-      `  0 file(s) changed; wiki build queued (no generated pages on the server yet).`
+      `  0 file(s) changed; wiki build queued (no generated pages on the server yet).`,
     );
   } else {
     console.log(`  ${changed} file(s) changed.`);
@@ -112,7 +111,7 @@ async function syncProject(projectDir: string) {
 
   // Pull wiki pages
   const syncRes = await fetch(`${apiUrl}/api/sync`, {
-    method: 'POST',
+    method: "POST",
     headers,
     body: JSON.stringify({ wiki: config.name, files: {} }),
   });
@@ -130,7 +129,7 @@ async function syncProject(projectDir: string) {
 
   if (pullPaths.length > 0) {
     const pullRes = await fetch(`${apiUrl}/api/pull`, {
-      method: 'POST',
+      method: "POST",
       headers,
       body: JSON.stringify({ wiki: config.name, paths: pullPaths }),
     });
@@ -140,10 +139,10 @@ async function syncProject(projectDir: string) {
         ok: boolean;
         data?: { files: { path: string; content: string }[] };
       };
-      const wikiDir = resolve(projectDir, 'wiki');
+      const wikiDir = resolve(projectDir, "wiki");
       for (const file of pullData.data?.files || []) {
         const filePath = resolve(wikiDir, file.path);
-        mkdirSync(resolve(filePath, '..'), { recursive: true });
+        mkdirSync(resolve(filePath, ".."), { recursive: true });
         writeFileSync(filePath, file.content);
       }
       console.log(`  Pulled ${pullData.data?.files.length || 0} wiki page(s).`);
@@ -155,9 +154,9 @@ async function syncProject(projectDir: string) {
   // Store file hashes so daemon knows what's changed next time
   const hashes: Record<string, string> = {};
   for (const f of sourceFiles) {
-    const hasher = new CryptoHasher('sha256');
+    const hasher = new CryptoHasher("sha256");
     hasher.update(f.content);
-    hashes[f.path] = hasher.digest('hex');
+    hashes[f.path] = hasher.digest("hex");
   }
   writeHashes(config.name, hashes);
 
@@ -173,10 +172,10 @@ async function syncProject(projectDir: string) {
 }
 
 export default async function sync(args: string[]) {
-  if (args.includes('--all')) {
+  if (args.includes("--all")) {
     const { projects } = readProjects();
     if (projects.length === 0) {
-      console.log('No projects registered.');
+      console.log("No projects registered.");
       return;
     }
     for (const p of projects) {

@@ -3,17 +3,17 @@
  * Used by both OpenAI and xAI (Grok) providers.
  * Non-streaming only — this runs server-side for wiki maintenance.
  */
-import type OpenAI from 'openai';
+import type OpenAI from "openai";
 import type {
   ChatMessage,
   ChatOptions,
   ChatResult,
   ToolDefinition,
-} from '../ai';
+} from "../ai";
 
 function toOpenAITools(tools: ToolDefinition[]): OpenAI.ChatCompletionTool[] {
   return tools.map((t) => ({
-    type: 'function' as const,
+    type: "function" as const,
     function: {
       name: t.name,
       description: t.description,
@@ -23,18 +23,18 @@ function toOpenAITools(tools: ToolDefinition[]): OpenAI.ChatCompletionTool[] {
 }
 
 function toOpenAIMessages(
-  messages: ChatMessage[]
+  messages: ChatMessage[],
 ): OpenAI.ChatCompletionMessageParam[] {
   return messages.map((m) => {
-    if (m.role === 'tool') {
+    if (m.role === "tool") {
       return {
-        role: 'tool' as const,
+        role: "tool" as const,
         content: m.content,
-        tool_call_id: m.tool_call_id || '',
+        tool_call_id: m.tool_call_id || "",
       };
     }
     return {
-      role: m.role as 'user' | 'assistant' | 'system',
+      role: m.role as "user" | "assistant" | "system",
       content: m.content,
     };
   });
@@ -42,7 +42,7 @@ function toOpenAIMessages(
 
 export async function chatOpenAICompat(
   client: OpenAI,
-  options: ChatOptions & { model: string }
+  options: ChatOptions & { model: string },
 ): Promise<ChatResult> {
   const params: OpenAI.ChatCompletionCreateParams = {
     model: options.model,
@@ -59,7 +59,7 @@ export async function chatOpenAICompat(
   const usage = completion.usage;
 
   const result: ChatResult = {
-    content: message?.content || '',
+    content: message?.content || "",
     usage: {
       input_tokens: usage?.prompt_tokens ?? 0,
       output_tokens: usage?.completion_tokens ?? 0,
@@ -70,7 +70,7 @@ export async function chatOpenAICompat(
     result.tool_calls = message.tool_calls.map((tc) => ({
       id: tc.id,
       name: tc.function.name,
-      arguments: JSON.parse(tc.function.arguments || '{}'),
+      arguments: JSON.parse(tc.function.arguments || "{}"),
     }));
   }
 

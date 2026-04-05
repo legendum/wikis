@@ -5,9 +5,9 @@
  * changes) to avoid burning tokens on active editing. Until the first page
  * exists, we run as soon as possible (setTimeout(0)) so a new wiki doesn't wait.
  */
-import type { Database } from 'bun:sqlite';
-import { runAgent, type WikiConfig } from './agent';
-import { log } from './log';
+import type { Database } from "bun:sqlite";
+import { runAgent, type WikiConfig } from "./agent";
+import { log } from "./log";
 
 const DEBOUNCE_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -31,16 +31,16 @@ export function scheduleRegeneration(
   db: Database,
   wikiId: number,
   config: WikiConfig,
-  opts?: { debounce?: boolean; reason?: string }
+  opts?: { debounce?: boolean; reason?: string },
 ): boolean {
   const debounce = opts?.debounce ?? true;
-  const reason = opts?.reason ?? 'source files changed';
+  const reason = opts?.reason ?? "source files changed";
   const key = keyFor(dbPath, wikiId);
 
   if (!debounce && inFlight.has(key)) {
     log.info(
       `Regeneration already in progress for ${config.name}, skipping duplicate`,
-      { wiki: config.name }
+      { wiki: config.name },
     );
     return false;
   }
@@ -74,7 +74,7 @@ export function scheduleRegeneration(
         : `Regeneration started for ${config.name}`,
       {
         wiki: config.name,
-      }
+      },
     );
     try {
       const result = await runAgent(db, wikiId, config, { reason });

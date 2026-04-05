@@ -5,32 +5,32 @@
  *   wikis delete git-integration
  *   wikis delete "git integration"
  */
-import { existsSync, readFileSync, rmSync } from 'fs';
-import { resolve } from 'path';
-import yaml from 'js-yaml';
-import { getAccountKey, getApiUrl } from '../lib/config';
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
+import yaml from "js-yaml";
+import { getAccountKey, getApiUrl } from "../lib/config";
 
 export default async function deletePage(args: string[]) {
   const pageName = args[0];
   if (!pageName) {
-    console.error('Usage: wikis delete <page>');
-    console.error('Example: wikis delete git-integration');
+    console.error("Usage: wikis delete <page>");
+    console.error("Example: wikis delete git-integration");
     process.exit(1);
   }
 
   const projectDir = process.cwd();
-  const wikiDir = resolve(projectDir, 'wiki');
+  const wikiDir = resolve(projectDir, "wiki");
   const pagePath = resolve(wikiDir, `${pageName}.md`);
 
   // Check if wiki exists
-  const configPath = resolve(wikiDir, 'config.yml');
+  const configPath = resolve(wikiDir, "config.yml");
   if (!existsSync(configPath)) {
     console.error('No wiki found in this project. Run "wikis init" first.');
     process.exit(1);
   }
 
   // Read config to get wiki name
-  const config = yaml.load(readFileSync(configPath, 'utf8')) as {
+  const config = yaml.load(readFileSync(configPath, "utf8")) as {
     name: string;
   };
   const wikiName = config.name;
@@ -49,7 +49,7 @@ export default async function deletePage(args: string[]) {
 
   const apiUrl = getApiUrl();
   const headers = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     Authorization: `Bearer ${accountKey}`,
   };
 
@@ -62,9 +62,9 @@ export default async function deletePage(args: string[]) {
     const response = await fetch(
       `${apiUrl}/api/wikis/${encodeURIComponent(wikiName)}/pages/${encodeURIComponent(pageName)}`,
       {
-        method: 'DELETE',
+        method: "DELETE",
         headers,
-      }
+      },
     );
 
     if (response.ok) {
@@ -72,7 +72,7 @@ export default async function deletePage(args: string[]) {
       serverDeleted = true;
     } else {
       console.error(
-        `⚠️ Server returned ${response.status}: ${response.statusText}`
+        `⚠️ Server returned ${response.status}: ${response.statusText}`,
       );
     }
   } catch (e) {
@@ -88,8 +88,21 @@ export default async function deletePage(args: string[]) {
   }
 
   if (serverDeleted) {
-    console.log('💡 Run "wikis sync" to update the index.md and search index.');
+    console.log("🔄 Triggering index regeneration...");
+    try {
+      await fetch(`${apiUrl}/api/rebuild`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ wiki: wikiName, force: false }),
+      });
+      console.log("✅ Index regeneration triggered (this may take a moment).");
+    } catch (e) {
+      console.error(
+        `⚠️ Failed to trigger index regeneration: ${(e as Error).message}`,
+      );
+      console.log('💡 Run "wikis sync" to update the index.md manually.');
+    }
   }
 
-  console.log('Done.');
+  console.log("Done.");
 }
