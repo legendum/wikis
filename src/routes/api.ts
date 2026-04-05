@@ -128,24 +128,17 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     // upload succeeded but the agent never ran, or only source_files were restored.
     const needsInitialBuild = files.length > 0 && wikiPageCount === 0;
 
-    const { scheduleRegeneration, hasPendingRegeneration } = await import("../lib/regenerator");
+    const { scheduleRegeneration } = await import("../lib/regenerator");
     const dbPath = `user${user.id}`;
+    const wikiConfig = { name: wikiName, legendumToken: user.legendum_token };
 
-    let queuedRegeneration = false;
-    if (changed > 0) {
-      scheduleRegeneration(dbPath, db, wiki.id, {
-        name: wikiName,
-        legendumToken: user.legendum_token,
-      });
-      queuedRegeneration = true;
-    } else if (needsInitialBuild && !hasPendingRegeneration(dbPath, wiki.id)) {
-      // Do not reset the debounce on every sync while pages are still missing
-      scheduleRegeneration(dbPath, db, wiki.id, {
-        name: wikiName,
-        legendumToken: user.legendum_token,
-      });
-      queuedRegeneration = true;
-    }
+    const wantsBuild = changed > 0 || needsInitialBuild;
+    const queuedRegeneration = wantsBuild
+      ? scheduleRegeneration(dbPath, db, wiki.id, wikiConfig, {
+          debounce: wikiPageCount > 0,
+          reason: wikiPageCount === 0 ? "initial wiki build" : "source files changed",
+        })
+      : false;
 
     return {
       ok: true,
