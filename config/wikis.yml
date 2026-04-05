@@ -1,0 +1,55 @@
+# wikis.fyi server configuration
+# Copy to config/wikis.yml and adjust for your environment
+
+# Server
+port: 3000
+host: 0.0.0.0
+
+# Database
+# Global DB stores user registry; per-user DBs are created at data/{user_id}.db
+data_dir: ./data
+
+# Legendum (hosted mode — omit all three to run in self-hosted mode)
+# legendum_api_key: lpk_...
+# legendum_secret: lsk_...
+# legendum_base_url: https://legendum.co.uk
+
+# LLM (self-hosted mode — ignored when Legendum is configured)
+# The server uses the first configured provider it finds.
+# llm_provider: anthropic        # anthropic | openai | xai | gemini
+# anthropic_api_key: sk-ant-...
+# openai_api_key: sk-...
+# xai_api_key: xai-...
+# gemini_api_key: ...
+
+# Ollama (embeddings for RAG — required for both hosted and self-hosted)
+ollama_url: http://localhost:11434
+ollama_embed_model: all-minilm
+
+# Search
+search_chunk_size: 512           # tokens per chunk
+search_chunk_overlap: 64         # overlapping tokens between chunks
+search_fts_weight: 0.7           # FTS5 score weight in hybrid ranking
+search_vector_weight: 0.3        # vector score weight in hybrid ranking
+search_default_limit: 20         # default results per search query
+
+# Sync
+sync_conflict_strategy: last-write-wins   # only strategy for now
+
+# Source watching (daemon-side, but server validates)
+source_check_min_interval: 300   # 5 minutes (seconds)
+source_check_max_interval: 1800  # 30 minutes (seconds)
+
+# Free quota (per user per month, hosted mode only)
+free_source_pushes: 500
+free_wiki_updates: 100
+free_wikis: 1
+
+# Billing costs (in Legendum credits, hosted mode only)
+cost_source_push: 1              # per source diff pushed
+cost_wiki_update: 5              # per LLM agent run
+cost_wiki_storage: 10            # per active wiki per month
+
+# Logging
+log_dir: ./log
+log_level: info                  # debug | info | warn | error

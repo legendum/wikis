@@ -1,0 +1,7 @@
+# Public wikis — curated repos that wikis.fyi builds and hosts for free.
+# These serve as SEO landing pages and product showcase.
+
+wikis:
+  - repo: https://github.com/legendum/depends.git
+    name: depends
+    # sections: omitted — LLM will plan pages based on source material

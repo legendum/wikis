@@ -1,0 +1,22 @@
+{
+  "name": "wikis",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "wikis": "src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun run --watch src/server.ts",
+    "start": "bun run src/server.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "elysia": "^1.2",
+    "eta": "^3.5",
+    "js-yaml": "^4.1",
+    "openai": "^6.33.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0"
+  }
+}
