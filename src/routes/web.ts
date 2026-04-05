@@ -37,6 +37,11 @@ function renderMarkdown(md: string, project?: string): string {
       `<a href="/${project || ""}/${slug}">${text}</a>`)
     // External links
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2">$1</a>')
+    // Bare wiki links like [page-name.md] (no round brackets)
+    .replace(/\[([^\]]+?)\.md\](?!\()/g, (_, slug) => {
+      const title = slug.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+      return `<a href="/${project || ""}/${slug}">${title}</a>`;
+    })
     .replace(/^---$/gm, "<hr>");
 
   // Phase 3: block-level elements (line by line)
@@ -162,12 +167,16 @@ interface PageOpts {
   nav?: string;
   searchQuery?: string;
   loggedIn?: boolean;
+  balance?: number | null;
 }
 
 function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
   const creditsUrl = `${LEGENDUM_BASE_URL}/account`;
+  const balanceText = opts.balance != null
+    ? `${opts.balance.toLocaleString()} credits`
+    : "Buy Credits";
   const loginLink = opts.loggedIn
-    ? `<a href="${creditsUrl}" target="_blank" class="login"><span class="icon">&#x2C60;</span> Buy Credits</a>`
+    ? `<a href="${creditsUrl}" target="_blank" class="login"><span class="icon">&#x2C60;</span> ${balanceText}</a>`
     : `<a href="/login" class="login"><span class="icon">&#x2C60;</span> Log in with Legendum</a>`;
   return `<!DOCTYPE html>
 <html lang="en">
@@ -247,6 +256,7 @@ export const webRoutes = new Elysia()
   // Landing page — alphabetical wiki index
   .get("/", async ({ headers, query }) => {
     const user = resolveUser(headers);
+    const balance = user ? await fetchBalance(user.id) : null;
 
     // Signed in: show user's private wikis
     // Not signed in: show public wikis
@@ -271,7 +281,7 @@ export const webRoutes = new Elysia()
         .map((r) => `<li><a href="/${r.wiki}/${r.slug}"><strong>${r.wiki} / ${r.title}</strong> — ${escapeHtml(snippet(r.chunk))}</a></li>`)
         .join("\n");
       return new Response(
-        htmlPage("Search", `<h1>Search: ${escapeHtml(query.q)}</h1><ul>${html || "<li>No results</li>"}</ul>`, { searchQuery: query.q, loggedIn: !!user }),
+        htmlPage("Search", `<h1>Search: ${escapeHtml(query.q)}</h1><ul>${html || "<li>No results</li>"}</ul>`, { searchQuery: query.q, loggedIn: !!user, balance }),
         { headers: { "Content-Type": "text/html" } }
       );
     }
@@ -287,7 +297,7 @@ export const webRoutes = new Elysia()
     }).join("\n");
 
     return new Response(
-      htmlPage("Wikis", `<h1><img src="/public/wikis.png" alt="" class="page-logo">${heading}</h1>${subtitle}<ul>${list || empty}</ul>`, { loggedIn: !!user }),
+      htmlPage("Wikis", `<h1><img src="/public/wikis.png" alt="" class="page-logo">${heading}</h1>${subtitle}<ul>${list || empty}</ul>`, { loggedIn: !!user, balance }),
       { headers: { "Content-Type": "text/html" } }
     );
   })
@@ -313,6 +323,7 @@ async function serveWikiPage(
 ) {
   const wantMarkdown = rawPath.endsWith(".md");
   let loggedIn = false;
+  let balance: number | null = null;
 
   // Resolve DB — check public first, then private
   const publicDb = getPublicDb();
@@ -328,11 +339,12 @@ async function serveWikiPage(
     }
 
     loggedIn = true;
+    balance = await fetchBalance(user.id);
     db = getUserDb(user.id);
     wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(project) as { id: number } | null;
     if (!wiki) {
       set.status = 404;
-      return new Response(htmlPage("Not Found", notFoundBody("This wiki doesn't exist."), { loggedIn }), { headers: { "Content-Type": "text/html" } });
+      return new Response(htmlPage("Not Found", notFoundBody("This wiki doesn't exist."), { loggedIn, balance }), { headers: { "Content-Type": "text/html" } });
     }
   }
 
@@ -354,7 +366,7 @@ async function serveWikiPage(
       .join("\n");
     const navSearch = ` / <a href="/${project}">${project}</a> / <strong>Search</strong>`;
     return new Response(
-      htmlPage(`Search: ${query.q}`, `<h1>Search: ${escapeHtml(query.q)}</h1><ul>${html || "<li>No results</li>"}</ul>`, { nav: navSearch, searchQuery: query.q, loggedIn }),
+      htmlPage(`Search: ${query.q}`, `<h1>Search: ${escapeHtml(query.q)}</h1><ul>${html || "<li>No results</li>"}</ul>`, { nav: navSearch, searchQuery: query.q, loggedIn, balance }),
       { headers: { "Content-Type": "text/html" } }
     );
   }
@@ -374,7 +386,7 @@ async function serveWikiPage(
     if (wantMarkdown) {
       return new Response("# Not Found\n", { headers: { "Content-Type": "text/markdown" } });
     }
-    return new Response(htmlPage("Not Found", notFoundBody("This page doesn't exist yet."), { loggedIn }), { headers: { "Content-Type": "text/html" } });
+    return new Response(htmlPage("Not Found", notFoundBody("This page doesn't exist yet."), { loggedIn, balance }), { headers: { "Content-Type": "text/html" } });
   }
 
   if (wantMarkdown) {
@@ -396,7 +408,7 @@ async function serveWikiPage(
     ? `<details class="page-updates"><summary>Recent changes</summary><ul>${updates.map((u) => `<li><time>${u.created_at}</time> ${escapeHtml(u.summary)}</li>`).join("")}</ul></details>`
     : "";
   return new Response(
-    htmlPage(title, body + updatesHtml, { nav, loggedIn }),
+    htmlPage(title, body + updatesHtml, { nav, loggedIn, balance }),
     { headers: { "Content-Type": "text/html" } }
   );
 }
@@ -407,6 +419,20 @@ function snippet(text: string, max = 150): string {
   if (clean.length <= max) return clean;
   const cut = clean.lastIndexOf(" ", max);
   return clean.slice(0, cut > 0 ? cut : max) + "…";
+}
+
+async function fetchBalance(userId: number): Promise<number | null> {
+  try {
+    const { getUserById } = await import("../lib/db");
+    const user = getUserById(userId);
+    if (!user?.legendum_token) return null;
+    const legendum = require("../lib/legendum");
+    const acct = legendum.account(user.legendum_token);
+    const data = await acct.balance();
+    return data.balance ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function resolveUser(headers: Record<string, string | undefined>): { id: number } | null {
