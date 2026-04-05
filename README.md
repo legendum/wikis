@@ -118,8 +118,9 @@ wikis serve
 
 Default models:
 - Grok: `grok-4-1-fast-reasoning`
-- Claude: `claude-sonnet-4-5-20241022`
-- GPT: `gpt-4o-mini`
+- GPT: `gpt-5-mini`
+- Gemini: `gemini-3.1-flash-lite-preview`
+- Claude: `claude-haiku-4-5`
 
 The daemon connects to your local server just like it would to wikis.fyi.
 

@@ -45,9 +45,9 @@ const ALIASES: Record<string, Provider> = {
 
 const DEFAULT_MODELS: Record<Provider, string> = {
   xai: 'grok-4-1-fast-reasoning',
-  openai: 'gpt-4o-mini',
-  google: 'gemini-2.0-flash',
-  anthropic: 'claude-sonnet-4-5-20241022',
+  openai: 'gpt-5-mini',
+  google: 'gemini-3.1-flash-lite-preview',
+  anthropic: 'claude-haiku-4-5',
 };
 
 export function resolveProvider(input?: string): Provider {
