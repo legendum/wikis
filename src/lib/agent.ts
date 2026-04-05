@@ -176,11 +176,7 @@ async function billedChat(
   let reservation: Reservation | null = null;
 
   if (bill) {
-    try {
-      reservation = await reserve(config.legendumToken!, RESERVE_CREDITS, description);
-    } catch (e) {
-      log.warn(`Credit reserve failed for ${config.name}, proceeding without billing`, { error: (e as Error).message });
-    }
+    reservation = await reserve(config.legendumToken!, RESERVE_CREDITS, description);
   }
 
   try {
