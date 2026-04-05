@@ -21,6 +21,14 @@ export interface McpToolResult {
 
 export const MCP_TOOLS: McpTool[] = [
   {
+    name: "list_wikis",
+    description: "List all available wikis.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
     name: "search_wiki",
     description: "Search wiki pages by keyword or semantic query. Returns matching chunks ranked by relevance.",
     inputSchema: {
@@ -76,6 +84,13 @@ export async function handleToolCall(
   args: Record<string, unknown>,
 ): Promise<McpToolResult> {
   switch (toolName) {
+    case "list_wikis": {
+      const wikis = db.prepare("SELECT name, description FROM wikis ORDER BY name").all() as { name: string; description: string }[];
+      if (wikis.length === 0) return textResult("No wikis found.");
+      const text = wikis.map((w) => w.description ? `- ${w.name}: ${w.description}` : `- ${w.name}`).join("\n");
+      return textResult(text);
+    }
+
     case "search_wiki": {
       const wikiName = args.wiki as string;
       const query = args.query as string;
