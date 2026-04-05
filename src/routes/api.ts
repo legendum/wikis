@@ -125,7 +125,10 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     if (changed > 0) {
       const { scheduleRegeneration } = await import("../lib/regenerator");
       const dbPath = `user${user.id}`;
-      scheduleRegeneration(dbPath, db, wiki.id, { name: wikiName });
+      scheduleRegeneration(dbPath, db, wiki.id, {
+        name: wikiName,
+        legendumToken: user.legendum_token,
+      });
     }
 
     return { ok: true, data: { files: files.length, changed } };
@@ -215,7 +218,7 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
     // Run in background — builds can take 15+ minutes
     import("../lib/agent").then(({ runAgent }) => {
-      runAgent(db, wiki.id, { name: wikiName }, {
+      runAgent(db, wiki.id, { name: wikiName, legendumToken: user.legendum_token }, {
         reason: "manual rebuild",
         force: !!force,
       }).catch((e) => {
