@@ -204,6 +204,35 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     };
   })
 
+  // --- Rebuild ---
+
+  .post("/rebuild", async ({ body, headers }) => {
+    const { user, db } = authGuard(headers);
+    const { wiki: wikiName, force } = body as { wiki: string; force?: boolean };
+
+    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
+    if (!wiki) return { ok: false, error: "wiki_not_found" };
+
+    const { runAgent } = await import("../lib/agent");
+    try {
+      const result = await runAgent(db, wiki.id, { name: wikiName }, {
+        reason: "manual rebuild",
+        force: !!force,
+      });
+      return {
+        ok: true,
+        data: {
+          created: result.pagesCreated.length,
+          updated: result.pagesUpdated.length,
+          pages_created: result.pagesCreated,
+          pages_updated: result.pagesUpdated,
+        },
+      };
+    } catch (e) {
+      return { ok: false, error: "rebuild_failed", message: (e as Error).message };
+    }
+  })
+
   // --- Login (register account key) ---
 
   .post("/login", async ({ body }) => {
