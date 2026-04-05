@@ -166,10 +166,10 @@ async function billedChat(
   db: Database,
   wikiId: number,
   config: WikiConfig,
-  options: { messages: ChatMessage[] },
+  options: { messages: ChatMessage[]; description?: string },
 ): Promise<{ content: string; usage: { input_tokens: number; output_tokens: number } }> {
   const projectTitle = config.name.charAt(0).toUpperCase() + config.name.slice(1);
-  const description = `Wiki ${projectTitle}`;
+  const description = options.description || `Wiki ${projectTitle}`;
   const bill = config.legendumToken && shouldBill(!!config.userHasOwnKey);
   let reservation: Reservation | null = null;
 
@@ -350,7 +350,7 @@ export async function runAgent(
 
     let llmResult;
     try {
-      llmResult = await billedChat(db, wikiId, config, { messages });
+      llmResult = await billedChat(db, wikiId, config, { messages, description: `Wiki ${config.name} — ${pagePath}` });
       log.info(`Section "${section.name}": LLM responded (${llmResult.usage.output_tokens} tokens)`, { wiki: config.name });
     } catch (e) {
       log.error(`Section "${section.name}": LLM failed`, { wiki: config.name, error: (e as Error).message });
@@ -412,7 +412,7 @@ export async function runAgent(
     const messages = buildMessages(config, { name: pageName, description: "" }, sourceContent.join("\n\n"), existing.content, allPages);
 
     try {
-      const llmResult = await billedChat(db, wikiId, config, { messages });
+      const llmResult = await billedChat(db, wikiId, config, { messages, description: `Wiki ${config.name} — ${pagePath}` });
       result.usage.input_tokens += llmResult.usage.input_tokens;
       result.usage.output_tokens += llmResult.usage.output_tokens;
 
@@ -434,7 +434,7 @@ export async function runAgent(
   await fillMissingPages(db, wikiId, config, result);
 
   // Consolidate redundant/overlapping pages
-  const chatFn = (opts: { messages: import("./ai").ChatMessage[] }) =>
+  const chatFn = (opts: { messages: import("./ai").ChatMessage[]; description?: string }) =>
     billedChat(db, wikiId, config, opts);
   await consolidatePages(db, wikiId, config, chatFn, result);
 
@@ -603,7 +603,7 @@ ${sourceContext || "(no relevant sources found)"}`,
     log.info(`Filling missing page "${pagePath}" (${sourceContent.length} source files, calling LLM...)`, { wiki: config.name });
 
     try {
-      const llmResult = await billedChat(db, wikiId, config, { messages });
+      const llmResult = await billedChat(db, wikiId, config, { messages, description: `Wiki ${config.name} — ${pagePath}` });
       result.usage.input_tokens += llmResult.usage.input_tokens;
       result.usage.output_tokens += llmResult.usage.output_tokens;
 
@@ -707,6 +707,7 @@ async function updateIndex(db: Database, wikiId: number, config: WikiConfig, age
 
   try {
     const result = await billedChat(db, wikiId, config, {
+      description: `Wiki ${config.name} — index.md`,
       messages: [
         {
           role: "system",
@@ -784,6 +785,7 @@ async function updateDescription(db: Database, wikiId: number, config: WikiConfi
 
   try {
     const result = await billedChat(db, wikiId, config, {
+      description: `Wiki ${config.name} — description`,
       messages: [
         {
           role: "system",

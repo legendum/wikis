@@ -23,6 +23,7 @@ export interface ConsolidateResult {
 /** A chat function that handles billing. Passed in to avoid circular imports. */
 export type ChatFn = (options: {
   messages: ChatMessage[];
+  description?: string;
 }) => Promise<{ content: string; usage: { input_tokens: number; output_tokens: number } }>;
 
 interface MergePlan {
@@ -58,6 +59,7 @@ async function planConsolidation(
   }
 
   const result = await chatFn({
+    description: `Wiki ${config.name} — consolidation plan`,
     messages: [
       {
         role: "system",
@@ -218,6 +220,7 @@ export async function consolidatePages(
         .join("\n");
 
       const llmResult = await chatFn({
+        description: `Wiki ${config.name} — merge into ${merge.into}`,
         messages: [
           {
             role: "system",
