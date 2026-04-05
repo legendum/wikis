@@ -477,7 +477,7 @@ Rules:
 - Write in third person, present tense
 - Be thorough — explain concepts, design decisions, and how components fit together
 - Use headings (##, ###) to structure content
-- Include code examples from sources when they clarify concepts
+- Include code examples from sources when they clarify concepts — always close code fences
 - ONLY link to pages in the "Wiki pages" list below — do not invent links to pages that don't exist
 - Use relative markdown links like [Page Name](page-name.md)
 - Do not include meta-commentary about the writing process
@@ -584,7 +584,7 @@ Rules:
 - Write in third person, present tense
 - Be concise but thorough
 - Use headings (##, ###) to structure content
-- Include code examples from sources when they clarify concepts
+- Include code examples from sources when they clarify concepts — always close code fences
 - ONLY link to pages in the "Wiki pages" list below
 - Use relative markdown links like [Page Name](page-name.md)
 - Do not include meta-commentary about the writing process
@@ -643,9 +643,7 @@ function extractMarkdown(content: string): string | null {
 
   // Strip ```markdown ... ``` fences
   const fenced = content.match(/^```(?:markdown|md)?\n([\s\S]*?)\n```$/m);
-  if (fenced) return fenced[1].trim();
-
-  return content.trim();
+  return fenced ? fenced[1].trim() : content.trim();
 }
 
 /** Ask the LLM for a one-line summary of what changed on a page. */
