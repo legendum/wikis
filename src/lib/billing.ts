@@ -117,7 +117,7 @@ export async function settle(
 
   // Record credits used regardless of billing
   if (event) {
-    recordEvent(event.db, event.wikiId, "credits_used", totalCredits);
+    recordEvent(event.db, event.wikiId, "credits_used", totalCredits, description);
   }
 
   if (!reservation || !legendumToken) return totalCredits;
@@ -179,11 +179,13 @@ export function recordEvent(
   wikiId: number | null,
   type: EventType,
   count = 1,
+  description = "",
 ): void {
-  db.prepare("INSERT INTO events (wiki_id, type, count) VALUES (?, ?, ?)").run(
+  db.prepare("INSERT INTO events (wiki_id, type, count, description) VALUES (?, ?, ?, ?)").run(
     wikiId,
     type,
     count,
+    description,
   );
 }
 
