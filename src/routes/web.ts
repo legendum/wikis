@@ -172,11 +172,11 @@ interface PageOpts {
 
 function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
   const creditsUrl = `${LEGENDUM_BASE_URL}/account`;
-  const balanceText = opts.balance != null
-    ? `${opts.balance.toLocaleString()} credits`
-    : "Buy Credits";
+  const balancePill = opts.balance != null
+    ? `<span class="icon">&#x2C60; ${opts.balance.toLocaleString()}</span> `
+    : `<span class="icon">&#x2C60;</span> `;
   const loginLink = opts.loggedIn
-    ? `<a href="${creditsUrl}" target="_blank" class="login"><span class="icon">&#x2C60;</span> ${balanceText}</a>`
+    ? `<a href="${creditsUrl}" target="_blank" class="login">${balancePill}Buy Credits</a>`
     : `<a href="/login" class="login"><span class="icon">&#x2C60;</span> Log in with Legendum</a>`;
   return `<!DOCTYPE html>
 <html lang="en">

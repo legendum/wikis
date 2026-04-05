@@ -11,6 +11,7 @@ import { Database } from "bun:sqlite";
 import { chat, type ChatMessage } from "./ai";
 import { upsertFile, getFile, listFiles, recordUpdate } from "./storage";
 import { indexFile } from "./indexer";
+import { consolidatePages } from "./consolidate";
 import { log } from "./log";
 import { shouldBill, reserve, settle, release, type Reservation } from "./billing";
 
@@ -432,7 +433,13 @@ export async function runAgent(
   // Fill missing pages — find links to .md files that don't exist yet and create them
   await fillMissingPages(db, wikiId, config, result);
 
+  // Consolidate redundant/overlapping pages
+  const chatFn = (opts: { messages: import("./ai").ChatMessage[] }) =>
+    billedChat(db, wikiId, config, opts);
+  await consolidatePages(db, wikiId, config, chatFn, result);
+
   const hasChanges = result.pagesCreated.length > 0 || result.pagesUpdated.length > 0;
+
 
   if (hasChanges) {
     // Only regenerate description/index when pages actually changed

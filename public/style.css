@@ -49,14 +49,16 @@ header nav .login .icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.4em;
-  height: 1.4em;
-  border-radius: 50%;
+  min-width: 1.4em;
+  min-height: 1.4em;
+  padding: 0.1em 0.4em;
+  border-radius: 999px;
   background: rgb(88, 176, 209);
   color: white;
   font-weight: bold;
   font-size: 0.8em;
 }
+
 
 header .search {
   position: relative;
