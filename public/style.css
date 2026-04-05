@@ -208,6 +208,7 @@ footer a { color: #888; }
   font-size: 4rem;
   color: #ccc;
   margin-bottom: 0.5rem;
+  justify-content: center;
 }
 
 .not-found p {

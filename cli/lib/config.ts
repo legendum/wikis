@@ -12,6 +12,7 @@ const PROJECTS_PATH = resolve(CONFIG_DIR, "projects.yaml");
 export interface CliConfig {
   account_key?: string;
   api_url?: string;
+  poll_interval?: number; // minutes between daemon syncs (default 5)
 }
 
 export interface ProjectEntry {
@@ -76,6 +77,11 @@ export function getApiUrl(): string {
 
 export function getAccountKey(): string | null {
   return readConfig().account_key || null;
+}
+
+export function getPollInterval(): number {
+  const minutes = readConfig().poll_interval;
+  return (minutes && minutes >= 1 ? minutes : 5) * 60 * 1000;
 }
 
 // --- Per-project file hashes ---

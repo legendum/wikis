@@ -29,6 +29,7 @@ export default async function login(args: string[]) {
   const callbackUrl = `http://localhost:${callbackPort}/callback`;
 
   // Start a tiny HTTP server to receive the callback
+  let authenticated = false;
   const server = Bun.serve({
     port: callbackPort,
     async fetch(req) {
@@ -39,6 +40,7 @@ export default async function login(args: string[]) {
           const config = readConfig();
           config.account_key = accountKey;
           writeConfig(config);
+          authenticated = true;
           setTimeout(() => server.stop(), 500);
           return new Response(
             "<html><body><h2>Logged in!</h2><p>You can close this tab.</p></body></html>",
@@ -74,7 +76,7 @@ export default async function login(args: string[]) {
     }, 5 * 60 * 1000);
 
     const check = setInterval(() => {
-      if (!server.port) {
+      if (authenticated) {
         clearInterval(check);
         clearTimeout(timeout);
         console.log("Authenticated successfully.");

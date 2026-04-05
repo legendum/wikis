@@ -6,7 +6,7 @@
  *   wikis sync --all   — sync all registered projects
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { resolve, relative } from "path";
+import { resolve } from "path";
 import { parse } from "yaml";
 import { Glob } from "bun";
 import { CryptoHasher } from "bun";

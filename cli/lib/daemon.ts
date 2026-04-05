@@ -2,7 +2,7 @@
  * Daemon process — polls registered projects for source file changes and syncs.
  * Spawned by `wikis start`, killed by `wikis stop`.
  */
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { resolve } from "path";
 import { parse } from "yaml";
 import { Glob } from "bun";
@@ -16,13 +16,14 @@ import {
   removeDaemonPid,
   getApiUrl,
   getAccountKey,
+  getPollInterval,
 } from "./config";
 
-const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const POLL_INTERVAL = getPollInterval();
 const MAX_BACKOFF = 30 * 60 * 1000; // 30 minutes
 
-// Track per-project error backoff
-const backoff = new Map<string, number>();
+// Track per-project error backoff: project name → { until: timestamp, delay: ms }
+const backoff = new Map<string, { until: number; delay: number }>();
 
 function hashFile(content: string): string {
   const hasher = new CryptoHasher("sha256");
@@ -65,6 +66,42 @@ function findChangedFiles(
   return changed;
 }
 
+async function pullWikiPages(projectDir: string, config: WikiConfig, headers: Record<string, string>): Promise<number> {
+  const apiUrl = getApiUrl();
+
+  const syncRes = await fetch(`${apiUrl}/api/sync`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ wiki: config.name, files: {} }),
+  });
+  if (!syncRes.ok) return 0;
+
+  const syncData = (await syncRes.json()) as { ok: boolean; data?: { pull: string[] } };
+  const pullPaths = syncData.data?.pull || [];
+  if (pullPaths.length === 0) return 0;
+
+  const pullRes = await fetch(`${apiUrl}/api/pull`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ wiki: config.name, paths: pullPaths }),
+  });
+  if (!pullRes.ok) return 0;
+
+  const pullData = (await pullRes.json()) as {
+    ok: boolean;
+    data?: { files: { path: string; content: string }[] };
+  };
+
+  const wikiDir = resolve(projectDir, "wiki");
+  for (const file of pullData.data?.files || []) {
+    const filePath = resolve(wikiDir, file.path);
+    mkdirSync(resolve(filePath, ".."), { recursive: true });
+    writeFileSync(filePath, file.content);
+  }
+
+  return pullData.data?.files.length || 0;
+}
+
 async function syncProject(projectDir: string, config: WikiConfig): Promise<boolean> {
   const apiUrl = getApiUrl();
   const accountKey = getAccountKey();
@@ -80,26 +117,28 @@ async function syncProject(projectDir: string, config: WikiConfig): Promise<bool
   const storedHashes = readHashes(config.name);
   const changedPaths = findChangedFiles(currentHashes, storedHashes);
 
-  if (changedPaths.length === 0) return false;
+  // Push changed source files
+  if (changedPaths.length > 0) {
+    const files = changedPaths.map((path) => ({
+      path,
+      content: readFileSync(resolve(projectDir, path), "utf8"),
+    }));
 
-  // Only push changed files
-  const files = changedPaths.map((path) => ({
-    path,
-    content: readFileSync(resolve(projectDir, path), "utf8"),
-  }));
+    const res = await fetch(`${apiUrl}/api/sources`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ wiki: config.name, files }),
+    });
 
-  const res = await fetch(`${apiUrl}/api/sources`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ wiki: config.name, files }),
-  });
+    if (!res.ok) {
+      throw new Error(`Source push failed: ${res.status}`);
+    }
 
-  if (!res.ok) {
-    throw new Error(`Source push failed: ${res.status}`);
+    writeHashes(config.name, currentHashes);
   }
 
-  // Update stored hashes
-  writeHashes(config.name, currentHashes);
+  // Pull updated wiki pages
+  const pulled = await pullWikiPages(projectDir, config, headers);
 
   // Update last_check
   const projects = readProjects();
@@ -109,7 +148,7 @@ async function syncProject(projectDir: string, config: WikiConfig): Promise<bool
     writeProjects(projects);
   }
 
-  return true;
+  return changedPaths.length > 0 || pulled > 0;
 }
 
 async function pollOnce() {
@@ -120,20 +159,20 @@ async function pollOnce() {
     if (!existsSync(configPath)) continue;
 
     // Check backoff
-    const wait = backoff.get(project.name) || 0;
-    if (wait > Date.now()) continue;
+    const bo = backoff.get(project.name);
+    if (bo && bo.until > Date.now()) continue;
 
     try {
       const config = parse(readFileSync(configPath, "utf8")) as WikiConfig;
       const synced = await syncProject(project.path, config);
       if (synced) {
-        console.log(`[${new Date().toISOString()}] Synced ${project.name} (changed files detected)`);
+        console.log(`[${new Date().toISOString()}] Synced ${project.name}`);
       }
       backoff.delete(project.name);
     } catch (e) {
-      const current = backoff.get(project.name);
-      const delay = current ? Math.min((Date.now() - current) * 2, MAX_BACKOFF) : POLL_INTERVAL;
-      backoff.set(project.name, Date.now() + delay);
+      const prev = backoff.get(project.name);
+      const delay = Math.min(prev ? prev.delay * 2 : POLL_INTERVAL, MAX_BACKOFF);
+      backoff.set(project.name, { until: Date.now() + delay, delay });
       console.error(`[${new Date().toISOString()}] Error syncing ${project.name}: ${(e as Error).message}`);
     }
   }

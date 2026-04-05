@@ -169,7 +169,7 @@ async function billedChat(
 ): Promise<{ content: string; usage: { input_tokens: number; output_tokens: number } }> {
   const projectTitle = config.name.charAt(0).toUpperCase() + config.name.slice(1);
   const description = `Wiki ${projectTitle}`;
-  const bill = config.legendumToken && !config.userHasOwnKey && shouldBill(!!config.userHasOwnKey);
+  const bill = config.legendumToken && shouldBill(!!config.userHasOwnKey);
   let reservation: Reservation | null = null;
 
   if (bill) {

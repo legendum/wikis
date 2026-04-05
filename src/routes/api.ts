@@ -3,8 +3,8 @@ import { extractBearerToken, validateAccountKey } from "../lib/auth";
 import { getUserDb, getPublicDb } from "../lib/db";
 import { handleMcpRequest } from "../lib/mcp";
 import { search } from "../lib/search";
-import { getManifest, upsertFile, getFile, deleteFile, listFiles } from "../lib/storage";
-import { indexFile, removeFile } from "../lib/indexer";
+import { getManifest, upsertFile, getFile, listFiles } from "../lib/storage";
+import { indexFile } from "../lib/indexer";
 import { diffManifests, type Manifest } from "../lib/sync";
 
 /**

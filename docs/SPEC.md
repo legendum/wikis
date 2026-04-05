@@ -360,7 +360,7 @@ Same mechanism as depends.cc:
 1. Checks for `bun` runtime; installs from bun.sh if missing
 2. Clones the repo to `~/.config/wikis/src` (or pulls if already exists)
 3. Runs `bun install` for dependencies
-4. Runs `bun link` — reads the `bin` field in `package.json` (`"wikis": "src/cli.ts"`) and symlinks `wikis` into the global PATH
+4. Runs `bun link` — reads the `bin` field in `package.json` (`"wikis": "cli/main.ts"`) and symlinks `wikis` into the global PATH
 
 Update with `wikis update` (runs `git pull && bun install` in `~/.config/wikis/src`).
 

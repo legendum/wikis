@@ -47,16 +47,20 @@ function escapeFtsQuery(query: string): string {
   return words.join(" OR ");
 }
 
-function ftsSearch(db: Database, query: string, limit: number): FtsRow[] {
+function ftsSearch(db: Database, wikiId: number, query: string, limit: number): FtsRow[] {
   const escaped = escapeFtsQuery(query);
   if (!escaped) return [];
 
   try {
     return db
       .prepare(
-        `SELECT path, content, rank FROM wiki_chunks_fts WHERE wiki_chunks_fts MATCH ? ORDER BY rank LIMIT ?`
+        `SELECT f.path, f.content, f.rank
+         FROM wiki_chunks_fts f
+         JOIN wiki_chunks c ON c.id = f.rowid
+         WHERE wiki_chunks_fts MATCH ? AND c.wiki_id = ?
+         ORDER BY f.rank LIMIT ?`
       )
-      .all(escaped, limit) as FtsRow[];
+      .all(escaped, wikiId, limit) as FtsRow[];
   } catch {
     return [];
   }
@@ -106,7 +110,7 @@ export async function search(
   const FTS_CANDIDATES = 50;
 
   // Step 1: FTS candidates
-  const ftsResults = ftsSearch(db, query, FTS_CANDIDATES);
+  const ftsResults = ftsSearch(db, wikiId, query, FTS_CANDIDATES);
   if (ftsResults.length === 0) return [];
 
   // Step 2: embed the query and re-rank by cosine similarity
