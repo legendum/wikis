@@ -3,7 +3,7 @@
  */
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
-import { parse } from "yaml";
+const { parse } = Bun.YAML;
 import { getApiUrl, getAccountKey } from "../lib/config";
 
 export default async function search(args: string[]) {

@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { resolve } from "path";
-import { parse } from "yaml";
+const { parse } = Bun.YAML;
 import { Glob } from "bun";
 import { CryptoHasher } from "bun";
 import { getApiUrl, getAccountKey, readProjects, writeProjects, readHashes, writeHashes } from "../lib/config";
