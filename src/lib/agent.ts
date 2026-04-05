@@ -12,6 +12,7 @@ import { chat, type ChatMessage } from "./ai";
 import { upsertFile, getFile, listFiles } from "./storage";
 import { indexFile } from "./indexer";
 import { log } from "./log";
+import { shouldBill, reserve, settle, release, type Reservation } from "./billing";
 
 /** Get the directory tree of all source files for a wiki. */
 function getSourceTree(db: Database, wikiId: number): string {
@@ -155,6 +156,10 @@ function findChangedPages(db: Database, wikiId: number): Set<string> {
 export interface WikiConfig {
   name: string;
   sections?: { name: string; description: string }[];
+  /** Legendum token for billing. Null = no billing (self-hosted or own API key). */
+  legendumToken?: string | null;
+  /** Whether user provides their own LLM API key (no billing). */
+  userHasOwnKey?: boolean;
 }
 
 export interface AgentResult {
@@ -164,6 +169,49 @@ export interface AgentResult {
 }
 
 const README_PREVIEW_LENGTH = 2048;
+const RESERVE_CREDITS = 50;
+
+/**
+ * Chat with billing: reserve → call LLM → settle.
+ * Only bills when config has a legendumToken and user doesn't have their own key.
+ */
+async function billedChat(
+  db: Database,
+  wikiId: number,
+  config: WikiConfig,
+  options: { messages: ChatMessage[] },
+): Promise<{ content: string; usage: { input_tokens: number; output_tokens: number } }> {
+  const projectTitle = config.name.charAt(0).toUpperCase() + config.name.slice(1);
+  const description = `Wiki ${projectTitle}`;
+  const bill = config.legendumToken && !config.userHasOwnKey && shouldBill(!!config.userHasOwnKey);
+  let reservation: Reservation | null = null;
+
+  if (bill) {
+    try {
+      reservation = await reserve(config.legendumToken!, RESERVE_CREDITS, description);
+    } catch (e) {
+      log.warn(`Credit reserve failed for ${config.name}, proceeding without billing`, { error: (e as Error).message });
+    }
+  }
+
+  try {
+    const result = await chat(options);
+
+    await settle(
+      reservation,
+      config.legendumToken!,
+      result.usage.input_tokens,
+      result.usage.output_tokens,
+      description,
+      { db, wikiId },
+    );
+
+    return result;
+  } catch (e) {
+    await release(reservation);
+    throw e;
+  }
+}
 
 /**
  * Ask the LLM to propose wiki sections based on source material.
@@ -229,7 +277,7 @@ export async function runAgent(
   db: Database,
   wikiId: number,
   config: WikiConfig,
-  opts: { reason?: string } = {}
+  opts: { reason?: string; force?: boolean } = {}
 ): Promise<AgentResult> {
   const result: AgentResult = {
     pagesUpdated: [],
@@ -244,7 +292,7 @@ export async function runAgent(
     const existingPages = listFiles(db, wikiId).filter(
       (f) => f.path.endsWith(".md") && !SPECIAL.has(f.path)
     );
-    if (existingPages.length > 0) {
+    if (existingPages.length > 0 && !opts.force) {
       // Wiki already has pages — no need to re-plan
       log.info(`${config.name}: ${existingPages.length} pages already exist, skipping section planning`, { wiki: config.name });
       sections = existingPages.map((f) => {
@@ -277,7 +325,7 @@ export async function runAgent(
     const pagePath = `${slugify(section.name)}.md`;
     const existing = getFile(db, wikiId, pagePath);
 
-    if (existing?.content) {
+    if (existing?.content && !opts.force) {
       log.info(`Section "${section.name}": already exists, skipping`, { wiki: config.name });
       continue;
     }
@@ -308,14 +356,15 @@ export async function runAgent(
       continue;
     }
 
-    log.info(`Section "${section.name}": ${sourceContent.length} source files, creating (calling LLM...)`, { wiki: config.name });
+    const action = existing?.content ? "regenerating" : "creating";
+    log.info(`Section "${section.name}": ${sourceContent.length} source files, ${action} (calling LLM...)`, { wiki: config.name });
 
     const allPages = sections.map((s) => `${slugify(s.name)}.md`).join("\n");
-    const messages = buildMessages(config, section, sourceContext, null, allPages);
+    const messages = buildMessages(config, section, sourceContext, existing?.content || null, allPages);
 
     let llmResult;
     try {
-      llmResult = await chat({ messages });
+      llmResult = await billedChat(db, wikiId, config, { messages });
       log.info(`Section "${section.name}": LLM responded (${llmResult.usage.output_tokens} tokens)`, { wiki: config.name });
     } catch (e) {
       log.error(`Section "${section.name}": LLM failed`, { wiki: config.name, error: (e as Error).message });
@@ -332,7 +381,11 @@ export async function runAgent(
     upsertFile(db, wikiId, pagePath, content, now);
     await indexFile(db, wikiId, "wiki_chunks", pagePath, content, { embeddings: true });
     setWikiPaths(db, wikiId, selectedFiles, pagePath);
-    result.pagesCreated.push(pagePath);
+    if (existing?.content) {
+      result.pagesUpdated.push(pagePath);
+    } else {
+      result.pagesCreated.push(pagePath);
+    }
   }
 
   // Regenerate pages whose source files have changed since last build
@@ -344,10 +397,15 @@ export async function runAgent(
     const existing = getFile(db, wikiId, pagePath);
     if (!existing?.content) continue;
 
-    // Get source files that feed into this page
+    // Get source files that feed into this page (exact match within comma-separated list)
     const sourceRows = db.prepare(
-      "SELECT path FROM source_files WHERE wiki_id = ? AND wiki_paths LIKE '%' || ? || '%'"
-    ).all(wikiId, pagePath) as { path: string }[];
+      `SELECT path FROM source_files WHERE wiki_id = ? AND (
+        wiki_paths = ? OR
+        wiki_paths LIKE ? || ',%' OR
+        wiki_paths LIKE '%,' || ? OR
+        wiki_paths LIKE '%,' || ? || ',%'
+      )`
+    ).all(wikiId, pagePath, pagePath, pagePath, pagePath) as { path: string }[];
 
     const sourceContent: string[] = [];
     for (const row of sourceRows) {
@@ -367,7 +425,7 @@ export async function runAgent(
     const messages = buildMessages(config, { name: pageName, description: "" }, sourceContent.join("\n\n"), existing.content, allPages);
 
     try {
-      const llmResult = await chat({ messages });
+      const llmResult = await billedChat(db, wikiId, config, { messages });
       result.usage.input_tokens += llmResult.usage.input_tokens;
       result.usage.output_tokens += llmResult.usage.output_tokens;
 
@@ -387,14 +445,16 @@ export async function runAgent(
   // Fill missing pages — find links to .md files that don't exist yet and create them
   await fillMissingPages(db, wikiId, config, result);
 
-  // Generate one-line description for the wiki
-  await updateDescription(db, wikiId, config);
+  const hasChanges = result.pagesCreated.length > 0 || result.pagesUpdated.length > 0;
 
-  // Update index.md — LLM-generated summary + page list
-  await updateIndex(db, wikiId, config, result);
-
-  // Append to log.md
-  await appendLog(db, wikiId, config, result, opts.reason);
+  if (hasChanges) {
+    // Only regenerate description/index when pages actually changed
+    await updateDescription(db, wikiId, config);
+    await updateIndex(db, wikiId, config, result);
+    await appendLog(db, wikiId, config, result, opts.reason);
+  } else {
+    log.info(`No pages changed for ${config.name}, skipping index/description update`, { wiki: config.name });
+  }
 
   return result;
 }
@@ -547,7 +607,7 @@ ${sourceContext || "(no relevant sources found)"}`,
     log.info(`Filling missing page "${pagePath}" (${sourceContent.length} source files, calling LLM...)`, { wiki: config.name });
 
     try {
-      const llmResult = await chat({ messages });
+      const llmResult = await billedChat(db, wikiId, config, { messages });
       result.usage.input_tokens += llmResult.usage.input_tokens;
       result.usage.output_tokens += llmResult.usage.output_tokens;
 
@@ -616,7 +676,7 @@ async function updateIndex(db: Database, wikiId: number, config: WikiConfig, age
   log.info(`Generating index page for ${config.name} (calling LLM...)`, { wiki: config.name });
 
   try {
-    const result = await chat({
+    const result = await billedChat(db, wikiId, config, {
       messages: [
         {
           role: "system",
@@ -693,7 +753,7 @@ async function updateDescription(db: Database, wikiId: number, config: WikiConfi
   log.info(`Generating description for ${config.name} (calling LLM...)`, { wiki: config.name });
 
   try {
-    const result = await chat({
+    const result = await billedChat(db, wikiId, config, {
       messages: [
         {
           role: "system",

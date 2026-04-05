@@ -1,12 +1,21 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { resolve, basename } from "path";
 import yaml from "js-yaml";
+import { addProject, getApiUrl, getAccountKey, readConfig, writeConfig, isDaemonRunning } from "../lib/config";
 
 const DEFAULT_CONFIG = {
   name: "",
   sources: ["src/**/*", "docs/**/*", "config/**/*", "README.md"],
   exclude: ["node_modules/**", "*.db", ".env", "wiki/**"],
 };
+
+async function prompt(message: string): Promise<string> {
+  process.stdout.write(message);
+  for await (const line of console) {
+    return line.trim();
+  }
+  return "";
+}
 
 export default async function init(_args: string[]) {
   const projectDir = process.cwd();
@@ -18,37 +27,80 @@ export default async function init(_args: string[]) {
     return;
   }
 
-  // Scaffold wiki/
-  mkdirSync(resolve(wikiDir, "pages"), { recursive: true });
+  // 1. Create wiki/ directory and config files
+  mkdirSync(wikiDir, { recursive: true });
 
-  // Generate config with project name from directory
-  const config = { ...DEFAULT_CONFIG, name: basename(projectDir) };
+  const name = basename(projectDir);
+  const config = { ...DEFAULT_CONFIG, name };
   writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }));
-
-  // Create empty index and log
-  writeFileSync(resolve(wikiDir, "index.md"), `# ${config.name}\n\nWiki index — maintained automatically.\n`);
+  writeFileSync(resolve(wikiDir, "index.md"), `# ${name}\n\nWiki index — maintained automatically.\n`);
   writeFileSync(resolve(wikiDir, "log.md"), `# Changelog\n`);
 
-  // Generate MCP config
-  const mcpConfig = {
-    mcpServers: {
-      wikis: {
-        type: "http",
-        url: "https://wikis.fyi/mcp",
-        headers: {
-          Authorization: "Bearer <your-account-key>",
-        },
-      },
-    },
-  };
-  writeFileSync(resolve(wikiDir, "mcp.json"), JSON.stringify(mcpConfig, null, 2) + "\n");
+  // Register with projects list
+  addProject({ path: projectDir, name });
 
   console.log(`Initialized wiki/ in ${projectDir}`);
   console.log(`  config:  wiki/config.yml`);
   console.log(`  index:   wiki/index.md`);
   console.log(`  log:     wiki/log.md`);
-  console.log(`  mcp:     wiki/mcp.json`);
-  console.log(`\nEdit wiki/config.yml to configure sources and sections.`);
 
-  // TODO: register project with daemon, trigger first build
+  // 2. Login if first time (no config exists yet)
+  let accountKey = getAccountKey();
+  const firstTime = !existsSync(resolve(process.env.HOME || "~", ".config/wikis/config.yaml"));
+  if (!accountKey && firstTime) {
+    console.log();
+    const key = await prompt("Legendum account key (see legendum.co.uk), or press Enter to skip: ");
+    if (key) {
+      const cfg = readConfig();
+      cfg.account_key = key;
+      writeConfig(cfg);
+      accountKey = key;
+      console.log("Account key saved.");
+    } else {
+      console.log("Skipped — running in self-hosted mode.");
+    }
+  }
+
+  // 3. Write MCP config
+  const apiUrl = getApiUrl();
+  const mcpConfig = {
+    mcpServers: {
+      wikis: {
+        type: "http",
+        url: `${apiUrl}/api/mcp`,
+        headers: {
+          Authorization: `Bearer ${accountKey || "<your-account-key>"}`,
+        },
+      },
+    },
+  };
+  writeFileSync(resolve(wikiDir, "mcp.json"), JSON.stringify(mcpConfig, null, 2) + "\n");
+  console.log(`  mcp:     wiki/mcp.json`);
+
+  // 4. First sync
+  if (accountKey) {
+    console.log();
+    console.log("Syncing sources...");
+    try {
+      const { default: sync } = await import("./sync");
+      await sync([]);
+    } catch (e) {
+      console.error(`Sync failed: ${(e as Error).message}`);
+      console.log("You can retry with 'wikis sync'.");
+    }
+  }
+
+  // 5. Start daemon if not already running
+  if (!isDaemonRunning()) {
+    console.log();
+    try {
+      const { default: start } = await import("./start");
+      await start([]);
+    } catch (e) {
+      console.log("Could not start daemon. Run 'wikis start' manually.");
+    }
+  }
+
+  console.log();
+  console.log("Done! Edit wiki/config.yml to customize sources.");
 }

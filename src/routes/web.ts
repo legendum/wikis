@@ -27,7 +27,7 @@ function renderMarkdown(md: string, project?: string): string {
     .replace(/^#### (.+)$/gm, "<h4>$1</h4>")
     .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+    .replace(/^# (.+)$/gm, '<h1><img src="/public/wikis.png" alt="" class="page-logo">$1</h1>')
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
     // Images (before links so ![...](...) isn't caught by link regex)
@@ -173,8 +173,20 @@ function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="description" content="Personal AI-generated wikis for your projects.">
+  <meta name="theme-color" content="#0066cc">
+  <meta property="og:title" content="${title} — wikis.fyi">
+  <meta property="og:description" content="Personal AI-generated wikis for your projects.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://wikis.fyi">
+  <meta property="og:image" content="https://wikis.fyi/public/wikis.png">
+  <meta name="twitter:card" content="summary">
   <title>${title} — wikis.fyi</title>
+  <link rel="icon" type="image/png" href="/public/wikis.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/public/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
 </head>
@@ -275,7 +287,7 @@ export const webRoutes = new Elysia()
     }).join("\n");
 
     return new Response(
-      htmlPage("Wikis", `<h1>${heading}</h1>${subtitle}<ul>${list || empty}</ul>`, { loggedIn: !!user }),
+      htmlPage("Wikis", `<h1><img src="/public/wikis.png" alt="" class="page-logo">${heading}</h1>${subtitle}<ul>${list || empty}</ul>`, { loggedIn: !!user }),
       { headers: { "Content-Type": "text/html" } }
     );
   })
@@ -312,7 +324,7 @@ async function serveWikiPage(
 
     if (!user) {
       set.status = 404;
-      return new Response(htmlPage("Not Found", "<h1>Wiki not found</h1>"), { headers: { "Content-Type": "text/html" } });
+      return new Response(htmlPage("Not Found", notFoundBody("This wiki doesn't exist.")), { headers: { "Content-Type": "text/html" } });
     }
 
     loggedIn = true;
@@ -320,7 +332,7 @@ async function serveWikiPage(
     wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(project) as { id: number } | null;
     if (!wiki) {
       set.status = 404;
-      return new Response(htmlPage("Not Found", "<h1>Wiki not found</h1>", { loggedIn }), { headers: { "Content-Type": "text/html" } });
+      return new Response(htmlPage("Not Found", notFoundBody("This wiki doesn't exist."), { loggedIn }), { headers: { "Content-Type": "text/html" } });
     }
   }
 
@@ -362,7 +374,7 @@ async function serveWikiPage(
     if (wantMarkdown) {
       return new Response("# Not Found\n", { headers: { "Content-Type": "text/markdown" } });
     }
-    return new Response(htmlPage("Not Found", "<h1>Page not found</h1>", { loggedIn }), { headers: { "Content-Type": "text/html" } });
+    return new Response(htmlPage("Not Found", notFoundBody("This page doesn't exist yet."), { loggedIn }), { headers: { "Content-Type": "text/html" } });
   }
 
   if (wantMarkdown) {
@@ -417,4 +429,12 @@ function resolveUser(headers: Record<string, string | undefined>): { id: number 
 
 function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function notFoundBody(message: string): string {
+  return `<div class="not-found">
+  <h1>404</h1>
+  <p>${message}</p>
+  <a href="/">Back to Wikis</a>
+</div>`;
 }

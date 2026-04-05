@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS wiki_files (
     path TEXT NOT NULL,
     content TEXT,
     hash TEXT NOT NULL,
-    source_hash TEXT,
     modified_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(wiki_id, path)

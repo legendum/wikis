@@ -445,41 +445,6 @@ Search is always via `?q=` query param on any level.
 | `GET /api/wikis` | Bearer `lak_...` | List user's wikis |
 | `DELETE /api/wikis/{name}` | Bearer `lak_...` | Delete a wiki |
 | `GET /api/usage` | Bearer `lak_...` | Current month usage and quota |
-| `GET /api/events/{wiki}` | Bearer `lak_...` or public | SSE stream — live wiki updates |
-
-### Server-Sent Events (SSE)
-
-The web UI subscribes to `GET /api/events/{wiki}` for live updates. When a `wikis` daemon pushes changes or the LLM agent updates pages, the server emits events to all connected clients for that wiki.
-
-**Event types:**
-
-```
-event: page_updated
-data: {"path": "pages/architecture.md", "hash": "abc123"}
-
-event: page_created
-data: {"path": "pages/new-concept.md", "hash": "def456"}
-
-event: page_deleted
-data: {"path": "pages/old-page.md"}
-
-event: sync_complete
-data: {"files_pushed": 3, "files_pulled": 1, "conflicts": 0}
-
-event: agent_started
-data: {"wiki": "my-project", "reason": "source changes detected"}
-
-event: agent_complete
-data: {"wiki": "my-project", "pages_updated": 4, "pages_created": 1}
-```
-
-The web UI uses these to:
-- Refresh the current page content without a full reload
-- Show a toast when new pages are created
-- Show agent activity status (e.g. "Updating wiki..." spinner)
-
-For public wikis, SSE requires no auth. For private wikis, the `lak_...` token is passed as a query param: `/api/events/{wiki}?token=lak_...`.
-
 ### Tech stack
 
 - **Runtime:** Bun
@@ -489,7 +454,7 @@ For public wikis, SSE requires no auth. For private wikis, the `lak_...` token i
 - **Auth:** Legendum (Login with Legendum + account keys)
 - **Billing:** Legendum credits via SDK
 
-Server-side rendering with Eta is deliberate: public wiki pages must be indexable by search engines. Every page is a full HTML response — no client-side hydration needed. SSE handles live updates without requiring a JS framework.
+Server-side rendering with Eta is deliberate: public wiki pages must be indexable by search engines. Every page is a full HTML response — no client-side hydration needed.
 
 ### Content negotiation
 

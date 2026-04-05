@@ -1,4 +1,21 @@
+/**
+ * wikis stop — stop the background daemon.
+ */
+import { readDaemonPid, removeDaemonPid, isDaemonRunning } from "../lib/config";
+
 export default async function stop(_args: string[]) {
-  // TODO: read PID, kill daemon
-  console.log("wikis daemon stopped");
+  if (!isDaemonRunning()) {
+    console.log("Daemon is not running.");
+    removeDaemonPid();
+    return;
+  }
+
+  const pid = readDaemonPid()!;
+  try {
+    process.kill(pid, "SIGTERM");
+    console.log(`Daemon stopped (PID ${pid}).`);
+  } catch {
+    console.log("Could not stop daemon — process may have already exited.");
+  }
+  removeDaemonPid();
 }

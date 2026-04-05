@@ -23,8 +23,15 @@ CREATE TABLE IF NOT EXISTS account_keys (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_account_keys_hash ON account_keys(key_hash);
 CREATE INDEX IF NOT EXISTS idx_account_keys_user ON account_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `;
 
 let globalDb: Database | null = null;

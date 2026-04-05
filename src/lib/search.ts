@@ -26,16 +26,25 @@ interface ChunkRow {
 }
 
 /**
- * Escape a query string for FTS5 — wrap each word in double quotes
- * to avoid syntax errors from special characters.
+ * Escape a query string for FTS5 — strip special chars, wrap each
+ * word in double quotes to prevent syntax errors.
  */
 function escapeFtsQuery(query: string): string {
-  return query
-    .replace(/[^\w\s*]/g, " ")
+  // Strip everything except word chars, whitespace, and * (for prefix)
+  const cleaned = query.replace(/[^\w\s*]/g, " ");
+  const words = cleaned
     .split(/\s+/)
     .filter(Boolean)
-    .map((word) => (word.includes("*") ? word : `"${word}"`))
-    .join(" OR ");
+    .map((word) => {
+      // Strip leading/trailing asterisks, then re-add one trailing * if present
+      const base = word.replace(/\*/g, "");
+      if (!base) return null; // was only special chars
+      return word.includes("*") ? `"${base}"*` : `"${base}"`;
+    })
+    .filter(Boolean);
+
+  if (words.length === 0) return "";
+  return words.join(" OR ");
 }
 
 function ftsSearch(db: Database, query: string, limit: number): FtsRow[] {

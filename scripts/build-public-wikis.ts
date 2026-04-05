@@ -4,8 +4,9 @@
  * Build all public wikis from config/public-wikis.yml.
  *
  * Usage:
- *   bun run scripts/build-public-wikis.ts          # full rebuild
- *   bun run scripts/build-public-wikis.ts --fill    # just fill missing pages (no rebuild)
+ *   bun run scripts/build-public-wikis.ts            # build (skips existing pages)
+ *   bun run scripts/build-public-wikis.ts --fill      # just fill missing pages
+ *   bun run scripts/build-public-wikis.ts --force     # regenerate all pages
  */
 import yaml from "js-yaml";
 import { readFileSync } from "fs";
@@ -19,6 +20,7 @@ const configPath = resolve(import.meta.dir, "../config/public-wikis.yml");
 const config = yaml.load(readFileSync(configPath, "utf8")) as { wikis: PublicWikiDef[] };
 
 const fillOnly = process.argv.includes("--fill");
+const force = process.argv.includes("--force");
 
 if (fillOnly) {
   console.log(`Filling missing pages for ${config.wikis.length} public wiki(s)...`);
@@ -43,8 +45,8 @@ if (fillOnly) {
     }
   }
 } else {
-  console.log(`Building ${config.wikis.length} public wiki(s)...`);
-  await buildAllPublicWikis(config.wikis);
+  console.log(`Building ${config.wikis.length} public wiki(s)...${force ? " (force regenerate)" : ""}`);
+  await buildAllPublicWikis(config.wikis, { force });
 }
 
 console.log("Done.");

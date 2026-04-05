@@ -70,15 +70,7 @@ export const SOURCE_CHECK_MAX_INTERVAL = Number(
   rawConfig.source_check_max_interval || 1800
 );
 
-// Free quota (hosted mode)
-export const FREE_SOURCE_PUSHES = Number(rawConfig.free_source_pushes || 500);
-export const FREE_WIKI_UPDATES = Number(rawConfig.free_wiki_updates || 100);
-export const FREE_WIKIS = Number(rawConfig.free_wikis || 1);
-
-// Billing costs
-export const COST_SOURCE_PUSH = Number(rawConfig.cost_source_push || 1);
-export const COST_WIKI_UPDATE = Number(rawConfig.cost_wiki_update || 5);
-export const COST_WIKI_STORAGE = Number(rawConfig.cost_wiki_storage || 10);
+// Billing — pricing is in config/pricing.yml, Legendum integration in lib/billing.ts
 
 // Logging
 export const LOG_LEVEL =

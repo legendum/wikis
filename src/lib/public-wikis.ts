@@ -52,7 +52,7 @@ export interface PublicWikiDef {
 /**
  * Clone or pull a repo, index sources, run the agent.
  */
-export async function buildPublicWiki(def: PublicWikiDef): Promise<void> {
+export async function buildPublicWiki(def: PublicWikiDef, opts: { force?: boolean } = {}): Promise<void> {
   const db = getPublicDb();
   const repoDir = resolve(REPOS_DIR, def.name);
 
@@ -109,8 +109,8 @@ export async function buildPublicWiki(def: PublicWikiDef): Promise<void> {
     sections: def.sections || DEFAULT_SECTIONS,
   };
 
-  log.info(`Running agent for ${def.name}`);
-  const result = await runAgent(db, wiki.id, config, { reason: "public wiki build" });
+  log.info(`Running agent for ${def.name}${opts.force ? " (force)" : ""}`);
+  const result = await runAgent(db, wiki.id, config, { reason: "public wiki build", force: opts.force });
   log.info(`Agent complete for ${def.name}`, {
     created: result.pagesCreated.length,
     updated: result.pagesUpdated.length,
@@ -155,10 +155,10 @@ function collectFiles(
 /**
  * Build all configured public wikis.
  */
-export async function buildAllPublicWikis(defs: PublicWikiDef[]): Promise<void> {
+export async function buildAllPublicWikis(defs: PublicWikiDef[], opts: { force?: boolean } = {}): Promise<void> {
   for (const def of defs) {
     try {
-      await buildPublicWiki(def);
+      await buildPublicWiki(def, opts);
     } catch (e) {
       log.error(`Failed to build public wiki: ${def.name}`, { error: String(e) });
     }

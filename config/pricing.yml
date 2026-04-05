@@ -1,0 +1,29 @@
+models:
+  xai:
+    label: Grok
+    model: grok-4-1-fast
+    input_credits_per_million: 200
+    output_credits_per_million: 500
+    markup_percent: 150
+
+  google:
+    label: Gemini
+    model: gemini-3.1-flash-lite-preview
+    input_credits_per_million: 250
+    output_credits_per_million: 750
+    markup_percent: 100
+
+  openai:
+    label: GPT
+    model: gpt-5-mini
+    input_credits_per_million: 250
+    output_credits_per_million: 2000
+    markup_percent: 100
+
+  anthropic:
+    label: Claude
+    model: claude-haiku-4-5
+    input_credits_per_million: 1000
+    output_credits_per_million: 5000
+    markup_percent: 50
+    minimum_charge: 2

@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { extractBearerToken, validateAccountKey } from "../lib/auth";
-import { getUserDb } from "../lib/db";
+import { getUserDb, getPublicDb } from "../lib/db";
+import { handleMcpRequest } from "../lib/mcp";
 import { search } from "../lib/search";
 import { getManifest, upsertFile, getFile, deleteFile, listFiles } from "../lib/storage";
 import { indexFile, removeFile } from "../lib/indexer";
@@ -97,11 +98,18 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
     if (!wiki) return { ok: false, error: "wiki_not_found" };
 
-    // Store source files
+    // Store source files — only update modified_at when content changed
     const { hashContent } = await import("../lib/storage");
     const now = new Date().toISOString();
+    let changed = 0;
     for (const file of files) {
       const hash = hashContent(file.content);
+      const existing = db.prepare(
+        "SELECT hash FROM source_files WHERE wiki_id = ? AND path = ?"
+      ).get(wiki.id, file.path) as { hash: string } | null;
+
+      if (existing?.hash === hash) continue;
+
       db.prepare(`
         INSERT INTO source_files (wiki_id, path, content, hash, modified_at)
         VALUES (?, ?, ?, ?, ?)
@@ -110,9 +118,17 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
           hash = excluded.hash,
           modified_at = excluded.modified_at
       `).run(wiki.id, file.path, file.content, hash, now);
+      changed++;
     }
 
-    return { ok: true, data: { files: files.length } };
+    // Schedule debounced regeneration if anything changed
+    if (changed > 0) {
+      const { scheduleRegeneration } = await import("../lib/regenerator");
+      const dbPath = `user${user.id}`;
+      scheduleRegeneration(dbPath, db, wiki.id, { name: wikiName });
+    }
+
+    return { ok: true, data: { files: files.length, changed } };
   })
 
   // --- Search ---
@@ -183,6 +199,26 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
         wikis: wikiCount,
         source_pushes: usage.source_push || 0,
         wiki_updates: usage.wiki_update || 0,
+        credits_used: usage.credits_used || 0,
       },
     };
+  })
+
+  // --- MCP server ---
+
+  .post("/mcp", async ({ body, headers }) => {
+    // MCP supports both authenticated (user wikis) and public wikis
+    const token = extractBearerToken(headers.authorization);
+    let db;
+    if (token) {
+      const user = validateAccountKey(token);
+      if (user) {
+        db = getUserDb(user.id);
+      }
+    }
+    // Fall back to public DB
+    if (!db) db = getPublicDb();
+
+    const result = await handleMcpRequest(db, body as Record<string, unknown>);
+    return result;
   });

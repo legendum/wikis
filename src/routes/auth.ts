@@ -33,17 +33,15 @@ function validateState(state: string, cookieState?: string): boolean {
   return cookieState === state;
 }
 
-// Simple session store — maps token → userId
-const sessions = new Map<string, number>();
-
 function createSession(userId: number): string {
   const token = `wks_${crypto.randomUUID().replace(/-/g, "")}`;
-  sessions.set(token, userId);
+  getGlobalDb().prepare("INSERT INTO sessions (token, user_id) VALUES (?, ?)").run(token, userId);
   return token;
 }
 
 export function getSessionUser(token: string): number | null {
-  return sessions.get(token) ?? null;
+  const row = getGlobalDb().prepare("SELECT user_id FROM sessions WHERE token = ?").get(token) as { user_id: number } | null;
+  return row?.user_id ?? null;
 }
 
 function getClient() {
@@ -158,7 +156,7 @@ export const authRoutes = new Elysia()
   /** POST /auth/logout */
   .post("/auth/logout", ({ cookie: { wikis_session }, redirect }) => {
     const token = wikis_session.value as string | undefined;
-    if (token) sessions.delete(token);
+    if (token) getGlobalDb().prepare("DELETE FROM sessions WHERE token = ?").run(token);
     wikis_session.remove();
     return redirect("/");
   });
