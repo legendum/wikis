@@ -155,7 +155,7 @@ Source files are stored whole in the `source_files` table — one row per file w
 
 ### Wiki page generation
 
-1. **First build:** LLM plans sections (up to 24 pages) based on README + directory tree. For each section, LLM picks relevant source files, reads them in full, and writes the page. The mapping from source files to wiki pages is recorded in `source_files.wiki_paths`.
+1. **First build:** LLM plans sections (up to 24 pages) based on README + directory tree + any existing pages. Existing pages are included in the planning prompt so the LLM avoids creating overlapping content. For each section, LLM picks relevant source files, reads them in full, and writes the page. The mapping from source files to wiki pages is recorded in `source_files.wiki_paths`.
 2. **Subsequent runs:** existing pages are skipped. New pages are added via `fillMissingPages` (scans for broken `.md` links and generates pages for them, recursively up to depth 3).
 3. **On source change:** when a source file's hash changes, the server looks up its `wiki_paths` and regenerates those wiki pages using the same source files. No LLM call needed to re-pick files.
 
@@ -409,8 +409,8 @@ projects:
 Simple, flat, no usernames in paths:
 
 ```
-wikis.fyi/                                  — landing page (not signed in) or project list (signed in)
-wikis.fyi/?q=                               — search across all visible projects
+wikis.fyi/                                  — public wikis (not signed in), or your wikis + public wikis (signed in)
+wikis.fyi/?q=                               — search across your wikis (signed in only)
 wikis.fyi/{project}                         — project wiki home (index.md)
 wikis.fyi/{project}/?q=                     — search within a project
 wikis.fyi/{project}/{page}                  — wiki page (flat structure)
@@ -418,16 +418,16 @@ wikis.fyi/{project}/{page}                  — wiki page (flat structure)
 
 **Visibility rules:**
 
-- **Not signed in:** you see public wikis only (curated wikis built from public repos — see below)
-- **Signed in:** you see your own private projects. All user projects are always private.
+- **Not signed in:** you see public wikis only. No search (per-wiki search is available on each public wiki's page).
+- **Signed in:** you see your own wikis first, then public wikis below. Homepage search covers your wikis only.
 
-Public and private wikis occupy separate namespaces — public wikis are system-managed and don't conflict with user project names.
+Public and private wikis live in separate databases (`data/public.db` vs `data/user{id}.db`). When viewing a wiki page, the user's DB is checked first, then public — so user wikis take priority on name collisions.
 
 ### Routes
 
 | Route | Description |
 |-------|-------------|
-| `GET /` | Landing page (guest) or private project list (signed in) |
+| `GET /` | Public wikis (guest) or your wikis + public wikis (signed in) |
 | `GET /login` | Login with Legendum |
 | `GET /{project}` | Wiki home — rendered index.md |
 | `GET /{project}/{page}` | Wiki page (flat structure, no categories) |
@@ -547,8 +547,9 @@ CREATE TABLE wiki_chunks (
 CREATE TABLE events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     wiki_id INTEGER REFERENCES wikis(id),
-    type TEXT NOT NULL,                     -- 'source_push' | 'wiki_update' | 'storage'
+    type TEXT NOT NULL,                     -- 'source_push' | 'wiki_update' | 'credits_used' | 'storage'
     count INTEGER NOT NULL DEFAULT 1,
+    description TEXT NOT NULL DEFAULT '',   -- same description sent to Legendum billing
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -169,6 +169,7 @@ interface PageOpts {
   searchQuery?: string;
   loggedIn?: boolean;
   balance?: number | null;
+  hideSearch?: boolean;
 }
 
 function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
@@ -206,10 +207,10 @@ function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
       <span><a href="/">Wikis</a>${opts.nav || ""}</span>
       ${loginLink}
     </nav>
-    <form class="search" method="get">
+    ${opts.hideSearch ? "" : `<form class="search" method="get">
       <input type="text" name="q" placeholder="Search..." value="${escapeHtml(opts.searchQuery || "")}" aria-label="Search" autocomplete="off">
       <div class="search-results" hidden></div>
-    </form>
+    </form>`}
   </header>
   <main>${body}</main>
   <footer><p>Powered by <a href="https://legendum.co.uk">Legendum</a></p></footer>
@@ -268,31 +269,14 @@ export const webRoutes = new Elysia()
       userWikis = db.prepare("SELECT name, description FROM wikis ORDER BY name").all() as { name: string; description: string }[];
     }
 
-    // Global search across all visible wikis
-    if (query.q) {
+    // Search user's wikis only (public wikis have per-wiki search)
+    if (query.q && user) {
       const allResults: { wiki: string; path: string; slug: string; title: string; chunk: string }[] = [];
-      const searched = new Set<string>();
-
-      if (user) {
-        const db = getUserDb(user.id);
-        for (const w of userWikis) {
-          searched.add(w.name);
-          const wikiRow = db.prepare("SELECT id FROM wikis WHERE name = ?").get(w.name) as { id: number } | null;
-          if (!wikiRow) continue;
-          const results = await search(db, wikiRow.id, query.q, { limit: 10 });
-          for (const r of results) {
-            const slug = r.path.replace(/\.md$/, "");
-            const title = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-            allResults.push({ wiki: w.name, path: r.path, slug, title, chunk: r.chunk });
-          }
-        }
-      }
-
-      for (const w of publicWikis) {
-        if (searched.has(w.name)) continue;
-        const wikiRow = publicDb.prepare("SELECT id FROM wikis WHERE name = ?").get(w.name) as { id: number } | null;
+      const db = getUserDb(user.id);
+      for (const w of userWikis) {
+        const wikiRow = db.prepare("SELECT id FROM wikis WHERE name = ?").get(w.name) as { id: number } | null;
         if (!wikiRow) continue;
-        const results = await search(publicDb, wikiRow.id, query.q, { limit: 10 });
+        const results = await search(db, wikiRow.id, query.q, { limit: 10 });
         for (const r of results) {
           const slug = r.path.replace(/\.md$/, "");
           const title = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -332,7 +316,7 @@ export const webRoutes = new Elysia()
     }
 
     return new Response(
-      htmlPage("Wikis", body, { loggedIn: !!user, balance }),
+      htmlPage("Wikis", body, { loggedIn: !!user, balance, hideSearch: !user }),
       { headers: { "Content-Type": "text/html" } }
     );
   })
