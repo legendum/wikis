@@ -4,5 +4,5 @@
 wikis:
   - repo: https://github.com/legendum/depends.git
     name: depends
-  - repo: https://github.com/legendum/simpler.pw.git
-    name: simpler.pw
+  - repo: https://github.com/block/goose.git
+    name: goose

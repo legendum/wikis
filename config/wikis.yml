@@ -2,7 +2,7 @@
 # Copy to config/wikis.yml and adjust for your environment
 
 # Server
-port: 3000
+port: 3300
 host: 0.0.0.0
 
 # Database
