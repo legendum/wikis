@@ -427,8 +427,8 @@ async function fetchBalance(userId: number): Promise<number | null> {
     const user = getUserById(userId);
     if (!user?.legendum_token) return null;
     const legendum = require("../lib/legendum");
-    const acct = legendum.account(user.legendum_token);
-    const data = await acct.balance();
+    if (!legendum.isConfigured()) return null;
+    const data = await legendum.balance(user.legendum_token);
     return data.balance ?? null;
   } catch {
     return null;
