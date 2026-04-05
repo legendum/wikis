@@ -4,7 +4,7 @@
  */
 import { Elysia } from "elysia";
 import { getPublicDb, getUserDb } from "../lib/db";
-import { getFile, listFiles } from "../lib/storage";
+import { getFile, listFiles, getPageUpdates } from "../lib/storage";
 import { search } from "../lib/search";
 import { extractBearerToken, validateAccountKey } from "../lib/auth";
 import { getSessionUser } from "./auth";
@@ -391,8 +391,12 @@ async function serveWikiPage(
     : ` / <a href="/${project}">${projectTitle}</a> / <strong>${pageTitle}</strong>`;
   const title = isIndex ? projectTitle : `${projectTitle} / ${pageTitle}`;
   const body = renderMarkdown(file.content, project);
+  const updates = getPageUpdates(db, wiki.id, filePath);
+  const updatesHtml = updates.length > 0
+    ? `<details class="page-updates"><summary>Recent changes</summary><ul>${updates.map((u) => `<li><time>${u.created_at}</time> ${escapeHtml(u.summary)}</li>`).join("")}</ul></details>`
+    : "";
   return new Response(
-    htmlPage(title, body, { nav, loggedIn }),
+    htmlPage(title, body + updatesHtml, { nav, loggedIn }),
     { headers: { "Content-Type": "text/html" } }
   );
 }

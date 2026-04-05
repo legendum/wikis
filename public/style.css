@@ -225,3 +225,31 @@ footer a { color: #888; }
 .not-found a:hover {
   text-decoration: underline;
 }
+
+.page-updates {
+  margin-top: 2rem;
+  border-top: 1px solid #e0e0e0;
+  padding-top: 1rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.page-updates summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: #444;
+}
+
+.page-updates ul {
+  list-style: none;
+  margin-top: 0.5rem;
+}
+
+.page-updates li {
+  padding: 0.2rem 0;
+}
+
+.page-updates time {
+  color: #999;
+  margin-right: 0.5rem;
+}

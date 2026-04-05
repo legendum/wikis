@@ -77,6 +77,36 @@ export function deleteFile(
 }
 
 /**
+ * Record a page update summary.
+ */
+export function recordUpdate(
+  db: Database,
+  wikiId: number,
+  path: string,
+  summary: string,
+): void {
+  db.prepare(
+    "INSERT INTO wiki_updates (wiki_id, path, summary) VALUES (?, ?, ?)"
+  ).run(wikiId, path, summary);
+}
+
+/**
+ * Get recent updates for a page.
+ */
+export function getPageUpdates(
+  db: Database,
+  wikiId: number,
+  path: string,
+  limit = 5,
+): { summary: string; created_at: string }[] {
+  return db
+    .prepare(
+      "SELECT summary, created_at FROM wiki_updates WHERE wiki_id = ? AND path = ? ORDER BY created_at DESC LIMIT ?"
+    )
+    .all(wikiId, path, limit) as { summary: string; created_at: string }[];
+}
+
+/**
  * Build a manifest from DB wiki files.
  */
 export function getManifest(

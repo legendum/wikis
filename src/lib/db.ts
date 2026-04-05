@@ -102,6 +102,15 @@ CREATE TABLE IF NOT EXISTS events (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS wiki_updates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wiki_id INTEGER NOT NULL REFERENCES wikis(id),
+    path TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_wiki_updates_page ON wiki_updates(wiki_id, path);
 CREATE INDEX IF NOT EXISTS idx_wiki_files_wiki ON wiki_files(wiki_id);
 CREATE INDEX IF NOT EXISTS idx_source_files_wiki ON source_files(wiki_id);
 CREATE INDEX IF NOT EXISTS idx_wiki_chunks_wiki ON wiki_chunks(wiki_id);

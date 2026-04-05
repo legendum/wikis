@@ -9,7 +9,7 @@
  */
 import { Database } from "bun:sqlite";
 import { chat, type ChatMessage } from "./ai";
-import { upsertFile, getFile, listFiles } from "./storage";
+import { upsertFile, getFile, listFiles, recordUpdate } from "./storage";
 import { indexFile } from "./indexer";
 import { log } from "./log";
 import { shouldBill, reserve, settle, release, type Reservation } from "./billing";
@@ -366,6 +366,7 @@ export async function runAgent(
     upsertFile(db, wikiId, pagePath, content, now);
     await indexFile(db, wikiId, "wiki_chunks", pagePath, content, { embeddings: true });
     setWikiPaths(db, wikiId, selectedFiles, pagePath);
+    await summarizeChange(db, wikiId, config, pagePath, existing?.content || null, content);
     if (existing?.content) {
       result.pagesUpdated.push(pagePath);
     } else {
@@ -419,6 +420,7 @@ export async function runAgent(
         const now = new Date().toISOString();
         upsertFile(db, wikiId, pagePath, content, now);
         await indexFile(db, wikiId, "wiki_chunks", pagePath, content, { embeddings: true });
+        await summarizeChange(db, wikiId, config, pagePath, existing.content, content);
         result.pagesUpdated.push(pagePath);
         log.info(`Regenerated "${pagePath}" (${llmResult.usage.output_tokens} tokens)`, { wiki: config.name });
       }
@@ -605,6 +607,7 @@ ${sourceContext || "(no relevant sources found)"}`,
       setWikiPaths(db, wikiId, selectedFiles, pagePath);
       existingPaths.add(pagePath);
       result.pagesCreated.push(pagePath);
+      await summarizeChange(db, wikiId, config, pagePath, null, content);
 
       log.info(`Filled missing page "${pagePath}" (${llmResult.usage.output_tokens} tokens)`, { wiki: config.name });
     } catch (e) {
@@ -629,6 +632,40 @@ function extractMarkdown(content: string): string | null {
   if (fenced) return fenced[1].trim();
 
   return content.trim();
+}
+
+/** Ask the LLM for a one-line summary of what changed on a page. */
+async function summarizeChange(
+  db: Database,
+  wikiId: number,
+  config: WikiConfig,
+  pagePath: string,
+  oldContent: string | null,
+  newContent: string,
+): Promise<void> {
+  const action = oldContent ? "Updated" : "Created";
+  try {
+    const result = await chat({
+      messages: [
+        {
+          role: "system",
+          content: "Respond with exactly one sentence (max 80 chars) summarizing what changed. No quotes, no markdown, no period at the end.",
+        },
+        {
+          role: "user",
+          content: oldContent
+            ? `Summarize the changes between old and new versions of "${pagePath}".\n\nOld:\n${oldContent.slice(0, 1000)}\n\nNew:\n${newContent.slice(0, 1000)}`
+            : `Summarize what the new wiki page "${pagePath}" covers.\n\n${newContent.slice(0, 1000)}`,
+        },
+      ],
+    });
+    const summary = result.content.trim().replace(/\.+$/, "");
+    if (summary) {
+      recordUpdate(db, wikiId, pagePath, `${action}: ${summary}`);
+    }
+  } catch {
+    recordUpdate(db, wikiId, pagePath, `${action} page`);
+  }
 }
 
 function slugify(name: string): string {

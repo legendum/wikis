@@ -6,7 +6,7 @@
  */
 import { Database } from "bun:sqlite";
 import { search } from "./search";
-import { getFile, listFiles } from "./storage";
+import { getFile, listFiles, getPageUpdates } from "./storage";
 
 export interface McpTool {
   name: string;
@@ -107,6 +107,12 @@ export async function handleToolCall(
       const path = page.endsWith(".md") ? page : `${page}.md`;
       const file = getFile(db, wiki.id, path);
       if (!file?.content) return errorResult(`Page "${page}" not found in wiki "${wikiName}".`);
+
+      const updates = getPageUpdates(db, wiki.id, path);
+      if (updates.length > 0) {
+        const log = updates.map((u) => `- ${u.created_at}: ${u.summary}`).join("\n");
+        return textResult(`${file.content}\n\n---\n\n## Recent Changes\n\n${log}`);
+      }
 
       return textResult(file.content);
     }
