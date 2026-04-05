@@ -166,64 +166,64 @@ export async function consolidatePages(
   chatFn: ChatFn,
   result: ConsolidateResult,
 ): Promise<void> {
-  const files = listFiles(db, wikiId).filter(
-    (f) => f.path.endsWith(".md") && !SPECIAL.has(f.path),
-  );
+  const MAX_PASSES = 5;
 
-  // Only run consolidation when there are enough pages to potentially overlap
-  if (files.length < 4) return;
+  for (let pass = 1; pass <= MAX_PASSES; pass++) {
+    const files = listFiles(db, wikiId).filter(
+      (f) => f.path.endsWith(".md") && !SPECIAL.has(f.path),
+    );
 
-  log.info(`Running consolidation pass (${files.length} pages)`, { wiki: config.name });
+    if (files.length < 4) return;
 
-  const { plan, usage } = await planConsolidation(db, wikiId, config, chatFn);
-  result.usage.input_tokens += usage.input_tokens;
-  result.usage.output_tokens += usage.output_tokens;
+    log.info(`Consolidation pass ${pass} (${files.length} pages)`, { wiki: config.name });
 
-  if (plan.merge.length === 0 && plan.remove.length === 0) {
-    log.info("No consolidation needed", { wiki: config.name });
-    return;
-  }
+    const { plan, usage } = await planConsolidation(db, wikiId, config, chatFn);
+    result.usage.input_tokens += usage.input_tokens;
+    result.usage.output_tokens += usage.output_tokens;
 
-  log.info(
-    `Consolidation plan: ${plan.merge.length} merges, ${plan.remove.length} removals`,
-    { wiki: config.name },
-  );
+    if (plan.merge.length === 0 && plan.remove.length === 0) {
+      log.info("No further consolidation needed", { wiki: config.name });
+      return;
+    }
 
-  // --- Process merges ---
-  for (const merge of plan.merge) {
-    const sourceContents: string[] = [];
-    const allOldPaths = merge.from;
+    log.info(
+      `Consolidation plan: ${plan.merge.length} merges, ${plan.remove.length} removals`,
+      { wiki: config.name },
+    );
 
-    // Collect content from all pages being merged
-    for (const path of [merge.into, ...merge.from]) {
-      const content = getFile(db, wikiId, path)?.content;
-      if (content) {
-        sourceContents.push(`--- ${path} ---\n${content}`);
+    // --- Process merges ---
+    for (const merge of plan.merge) {
+      const sourceContents: string[] = [];
+      const allOldPaths = merge.from;
+
+      for (const path of [merge.into, ...merge.from]) {
+        const content = getFile(db, wikiId, path)?.content;
+        if (content) {
+          sourceContents.push(`--- ${path} ---\n${content}`);
+        }
       }
-    }
 
-    if (sourceContents.length < 2) {
-      log.warn(`Merge skipped — not enough content for ${merge.into}`, { wiki: config.name });
-      continue;
-    }
+      if (sourceContents.length < 2) {
+        log.warn(`Merge skipped — not enough content for ${merge.into}`, { wiki: config.name });
+        continue;
+      }
 
-    const targetName = merge.into.replace(/\.md$/, "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const targetName = merge.into.replace(/\.md$/, "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
-    // Ask LLM to produce the merged page
-    log.info(`Merging ${merge.from.join(", ")} into ${merge.into} (calling LLM...)`, { wiki: config.name });
+      log.info(`Merging ${merge.from.join(", ")} into ${merge.into} (calling LLM...)`, { wiki: config.name });
 
-    try {
-      const allPages = listFiles(db, wikiId)
-        .filter((f) => f.path.endsWith(".md") && !merge.from.includes(f.path))
-        .map((f) => f.path)
-        .join("\n");
+      try {
+        const allPages = listFiles(db, wikiId)
+          .filter((f) => f.path.endsWith(".md") && !merge.from.includes(f.path))
+          .map((f) => f.path)
+          .join("\n");
 
-      const llmResult = await chatFn({
-        description: `Wiki ${config.name} — merge into ${merge.into}`,
-        messages: [
-          {
-            role: "system",
-            content: `You are a wiki maintainer for the "${config.name}" project. You are merging several overlapping wiki pages into one unified page.
+        const llmResult = await chatFn({
+          description: `Wiki ${config.name} — merge into ${merge.into}`,
+          messages: [
+            {
+              role: "system",
+              content: `You are a wiki maintainer for the "${config.name}" project. You are merging several overlapping wiki pages into one unified page.
 
 Rules:
 - Combine the best content from all source pages — do not lose important information
@@ -232,10 +232,10 @@ Rules:
 - ONLY link to pages in the "Wiki pages" list below
 - Use relative markdown links like [Page Name](page-name.md)
 - Output ONLY the markdown content for the merged page`,
-          },
-          {
-            role: "user",
-            content: `Merge these pages into a single page called "${targetName}" (${merge.into}).
+            },
+            {
+              role: "user",
+              content: `Merge these pages into a single page called "${targetName}" (${merge.into}).
 
 Reason for merge: ${merge.reason}
 
@@ -244,52 +244,52 @@ ${allPages}
 
 Pages to merge:
 ${sourceContents.join("\n\n")}`,
-          },
-        ],
-      });
+            },
+          ],
+        });
 
-      result.usage.input_tokens += llmResult.usage.input_tokens;
-      result.usage.output_tokens += llmResult.usage.output_tokens;
+        result.usage.input_tokens += llmResult.usage.input_tokens;
+        result.usage.output_tokens += llmResult.usage.output_tokens;
 
-      const content = llmResult.content
-        .replace(/^```(?:markdown|md)?\n/m, "")
-        .replace(/\n```$/m, "")
-        .trim();
+        const content = llmResult.content
+          .replace(/^```(?:markdown|md)?\n/m, "")
+          .replace(/\n```$/m, "")
+          .trim();
 
-      if (!content) continue;
+        if (!content) continue;
 
-      // Write the merged page
-      const now = new Date().toISOString();
-      upsertFile(db, wikiId, merge.into, content, now);
-      await indexFile(db, wikiId, "wiki_chunks", merge.into, content, { embeddings: true });
+        const now = new Date().toISOString();
+        upsertFile(db, wikiId, merge.into, content, now);
+        await indexFile(db, wikiId, "wiki_chunks", merge.into, content, { embeddings: true });
 
-      // Rewrite links and delete old pages
-      for (const oldPath of allOldPaths) {
-        await rewriteLinks(db, wikiId, oldPath, merge.into);
-        removePage(db, wikiId, oldPath);
-        log.info(`Deleted merged page ${oldPath}`, { wiki: config.name });
+        for (const oldPath of allOldPaths) {
+          await rewriteLinks(db, wikiId, oldPath, merge.into);
+          removePage(db, wikiId, oldPath);
+          log.info(`Deleted merged page ${oldPath}`, { wiki: config.name });
+        }
+
+        result.pagesUpdated.push(merge.into);
+        recordUpdate(db, wikiId, merge.into, `Merged: ${merge.from.join(", ")} → ${merge.into}`);
+
+        log.info(`Merged ${merge.from.length + 1} pages into ${merge.into}`, { wiki: config.name });
+      } catch (e) {
+        log.error(`Merge failed for ${merge.into}`, { wiki: config.name, error: (e as Error).message });
       }
+    }
 
-      result.pagesUpdated.push(merge.into);
-      recordUpdate(db, wikiId, merge.into, `Merged: ${merge.from.join(", ")} → ${merge.into}`);
+    // --- Process removals ---
+    for (const removal of plan.remove) {
+      const exists = getFile(db, wikiId, removal.page);
+      if (!exists) continue;
 
-      log.info(`Merged ${merge.from.length + 1} pages into ${merge.into}`, { wiki: config.name });
-    } catch (e) {
-      log.error(`Merge failed for ${merge.into}`, { wiki: config.name, error: (e as Error).message });
+      const affected = await rewriteLinks(db, wikiId, removal.page, removal.redirect);
+
+      removePage(db, wikiId, removal.page);
+      recordUpdate(db, wikiId, removal.page, `Removed: ${removal.reason} (→ ${removal.redirect})`);
+
+      log.info(`Removed ${removal.page} → ${removal.redirect} (rewrote links in ${affected.length} pages)`, { wiki: config.name });
     }
   }
 
-  // --- Process removals ---
-  for (const removal of plan.remove) {
-    const exists = getFile(db, wikiId, removal.page);
-    if (!exists) continue;
-
-    // Rewrite links to point to the redirect target
-    const affected = await rewriteLinks(db, wikiId, removal.page, removal.redirect);
-
-    removePage(db, wikiId, removal.page);
-    recordUpdate(db, wikiId, removal.page, `Removed: ${removal.reason} (→ ${removal.redirect})`);
-
-    log.info(`Removed ${removal.page} → ${removal.redirect} (rewrote links in ${affected.length} pages)`, { wiki: config.name });
-  }
+  log.warn(`Consolidation hit max passes (${MAX_PASSES})`, { wiki: config.name });
 }
