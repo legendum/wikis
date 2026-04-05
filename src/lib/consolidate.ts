@@ -11,6 +11,7 @@ import { upsertFile, getFile, listFiles, deleteFile, recordUpdate } from "./stor
 import { indexFile, removeFile } from "./indexer";
 import { log } from "./log";
 import { PAGE_PREVIEW_LENGTH } from "./constants";
+import { extractMarkdown } from "./agent";
 
 export interface ConsolidateConfig {
   name: string;
@@ -152,6 +153,38 @@ function removePage(db: Database, wikiId: number, path: string): void {
   removeFile(db, wikiId, "wiki_chunks", path);
 }
 
+/** Remove a wiki page from all source_files.wiki_paths that reference it. */
+function removeWikiPath(db: Database, wikiId: number, wikiPath: string): void {
+  const rows = db.prepare(
+    "SELECT id, wiki_paths FROM source_files WHERE wiki_id = ? AND wiki_paths != ''"
+  ).all(wikiId) as { id: number; wiki_paths: string }[];
+
+  for (const row of rows) {
+    const paths = row.wiki_paths.split(",").filter(p => p !== wikiPath && p !== "");
+    if (paths.length !== row.wiki_paths.split(",").length) {
+      db.prepare("UPDATE source_files SET wiki_paths = ? WHERE id = ?").run(paths.join(","), row.id);
+    }
+  }
+}
+
+/** Add a wiki page to the wiki_paths of specific source files. */
+function addWikiPath(db: Database, wikiId: number, sourcePaths: string[], wikiPath: string): void {
+  for (const srcPath of sourcePaths) {
+    const row = db.prepare(
+      "SELECT wiki_paths FROM source_files WHERE wiki_id = ? AND path = ?"
+    ).get(wikiId, srcPath) as { wiki_paths: string } | null;
+    if (!row) continue;
+
+    const existing = row.wiki_paths ? row.wiki_paths.split(",").filter(p => p !== "") : [];
+    if (!existing.includes(wikiPath)) {
+      existing.push(wikiPath);
+      db.prepare(
+        "UPDATE source_files SET wiki_paths = ? WHERE wiki_id = ? AND path = ?"
+      ).run(existing.join(","), wikiId, srcPath);
+    }
+  }
+}
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -196,6 +229,27 @@ export async function consolidatePages(
       const sourceContents: string[] = [];
       const allOldPaths = merge.from;
 
+      // Collect source files that contributed to the pages being merged
+      const contributingSources = new Set<string>();
+      for (const oldPath of allOldPaths) {
+        const rows = db.prepare(
+          "SELECT path FROM source_files WHERE wiki_id = ? AND INSTR(wiki_paths, ?) > 0"
+        ).all(wikiId, oldPath) as { path: string }[];
+
+        rows.forEach(row => contributingSources.add(row.path));
+      }
+
+      // Read source file contents for better quality
+      const sourceFileContents: string[] = [];
+      for (const srcPath of contributingSources) {
+        const row = db.prepare(
+          "SELECT content FROM source_files WHERE wiki_id = ? AND path = ?"
+        ).get(wikiId, srcPath) as { content: string } | null;
+        if (row?.content) {
+          sourceFileContents.push(`--- Source: ${srcPath} ---\n${row.content}`);
+        }
+      }
+
       for (const path of [merge.into, ...merge.from]) {
         const content = getFile(db, wikiId, path)?.content;
         if (content) {
@@ -226,9 +280,12 @@ export async function consolidatePages(
               content: `You are a wiki maintainer for the "${config.name}" project. You are merging several overlapping wiki pages into one unified page.
 
 Rules:
-- Combine the best content from all source pages — do not lose important information
+- Use the source materials as the primary reference — they contain the original, high-quality information
+- Combine the best content from both source materials and existing wiki pages
+- Do not lose important information from the sources
 - Remove redundancy — don't repeat the same concept twice
 - Use headings (##, ###) to structure content clearly
+- Include code examples when they clarify concepts — always close code fences with \`\`\`
 - ONLY link to pages in the "Wiki pages" list below
 - Use relative markdown links like [Page Name](page-name.md)
 - Output ONLY the markdown content for the merged page`,
@@ -242,7 +299,10 @@ Reason for merge: ${merge.reason}
 Wiki pages (ONLY link to these — the merged-away pages will no longer exist):
 ${allPages}
 
-Pages to merge:
+Source materials (the original files that these wiki pages were based on):
+${sourceFileContents.join("\n\n")}
+
+Existing wiki pages to merge:
 ${sourceContents.join("\n\n")}`,
             },
           ],
@@ -251,10 +311,7 @@ ${sourceContents.join("\n\n")}`,
         result.usage.input_tokens += llmResult.usage.input_tokens;
         result.usage.output_tokens += llmResult.usage.output_tokens;
 
-        const content = llmResult.content
-          .replace(/^```(?:markdown|md)?\n/m, "")
-          .replace(/\n```$/m, "")
-          .trim();
+        const content = extractMarkdown(llmResult.content);
 
         if (!content) continue;
 
@@ -266,6 +323,12 @@ ${sourceContents.join("\n\n")}`,
           await rewriteLinks(db, wikiId, oldPath, merge.into);
           removePage(db, wikiId, oldPath);
           log.info(`Deleted merged page ${oldPath}`, { wiki: config.name });
+        }
+
+        // Update wiki_paths: add merged page to sources, remove old pages
+        addWikiPath(db, wikiId, Array.from(contributingSources), merge.into);
+        for (const oldPath of allOldPaths) {
+          removeWikiPath(db, wikiId, oldPath);
         }
 
         result.pagesUpdated.push(merge.into);
@@ -285,6 +348,7 @@ ${sourceContents.join("\n\n")}`,
       const affected = await rewriteLinks(db, wikiId, removal.page, removal.redirect);
 
       removePage(db, wikiId, removal.page);
+      removeWikiPath(db, wikiId, removal.page); // Clean up wiki_paths
       recordUpdate(db, wikiId, removal.page, `Removed: ${removal.reason} (→ ${removal.redirect})`);
 
       log.info(`Removed ${removal.page} → ${removal.redirect} (rewrote links in ${affected.length} pages)`, { wiki: config.name });

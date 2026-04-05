@@ -392,15 +392,10 @@ export async function runAgent(
     const existing = getFile(db, wikiId, pagePath);
     if (!existing?.content) continue;
 
-    // Get source files that feed into this page (exact match within comma-separated list)
+    // Get source files that feed into this page (contained in comma-separated list)
     const sourceRows = db.prepare(
-      `SELECT path FROM source_files WHERE wiki_id = ? AND (
-        wiki_paths = ? OR
-        wiki_paths LIKE ? || ',%' OR
-        wiki_paths LIKE '%,' || ? OR
-        wiki_paths LIKE '%,' || ? || ',%'
-      )`
-    ).all(wikiId, pagePath, pagePath, pagePath, pagePath) as { path: string }[];
+      `SELECT path FROM source_files WHERE wiki_id = ? AND INSTR(wiki_paths, ?) > 0`
+    ).all(wikiId, pagePath) as { path: string }[];
 
     const sourceContent: string[] = [];
     for (const row of sourceRows) {
@@ -643,7 +638,45 @@ function extractMarkdown(content: string): string | null {
 
   // Strip ```markdown ... ``` fences
   const fenced = content.match(/^```(?:markdown|md)?\n([\s\S]*?)\n```$/m);
-  return fenced ? fenced[1].trim() : content.trim();
+  const extracted = fenced ? fenced[1].trim() : content.trim();
+
+  // Ensure all code blocks are properly closed
+  return closeCodeBlocks(extracted);
+}
+
+function closeCodeBlocks(content: string): string {
+  const lines = content.split('\n');
+  let inCodeBlock = false;
+  let codeBlockStart = '';
+  const result: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      if (inCodeBlock) {
+        // Closing a code block
+        if (!line.trim().endsWith('```')) {
+          result.push(line + '```');
+        } else {
+          result.push(line);
+        }
+        inCodeBlock = false;
+      } else {
+        // Starting a code block
+        inCodeBlock = true;
+        codeBlockStart = line;
+        result.push(line);
+      }
+    } else {
+      result.push(line);
+    }
+  }
+
+  // If we're still in a code block at the end, close it
+  if (inCodeBlock) {
+    result.push('```');
+  }
+
+  return result.join('\n');
 }
 
 /** Ask the LLM for a one-line summary of what changed on a page. */
