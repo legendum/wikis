@@ -2,7 +2,7 @@
 
 ## Overview
 
-**wikis.fyi** is a personal wiki service powered by LLMs. A background CLI (`wikis`) watches your project files, maintains a local `wiki/` folder of interlinked markdown pages, and syncs it to wikis.fyi for browsing and sharing. Login, linking, and billing are handled by Legendum.
+**wikis.fyi** is a personal AI-generated wiki service. A background CLI (`wikis`) watches your project files, maintains a local `wiki/` folder of interlinked markdown pages, and syncs it to wikis.fyi for browsing and sharing. Login, linking, and billing are handled by Legendum.
 
 Self-hostable: the same codebase runs at wikis.fyi and locally via `wikis serve`.
 
