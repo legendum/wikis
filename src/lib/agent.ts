@@ -211,6 +211,11 @@ async function planSections(
   const tree = getSourceTree(db, wikiId);
   const readme = getSourceFile(db, wikiId, "README.md");
 
+  const SPECIAL = new Set(["index.md", "log.md"]);
+  const existingPages = listFiles(db, wikiId)
+    .filter((f) => f.path.endsWith(".md") && !SPECIAL.has(f.path))
+    .map((f) => f.path);
+
   log.info(`Planning sections for ${config.name} (calling LLM...)`, { wiki: config.name });
 
   const result = await chat({
@@ -225,13 +230,13 @@ Respond with ONLY a JSON array of objects, each with "name" and "description" fi
   {"name": "API Reference", "description": "REST endpoints, request/response formats"}
 ]
 
-Keep names short (1–3 words). Descriptions should be one sentence. Choose fewer pages for small projects, more for large ones.`,
+Keep names short (1–3 words). Descriptions should be one sentence. Choose fewer pages for small projects, more for large ones. Each page must have a distinct topic — do not create multiple pages about the same thing.`,
       },
       {
         role: "user",
         content: `Propose wiki pages for the "${config.name}" project.
 
-${readme ? `README:\n${readme.slice(0, PAGE_PREVIEW_LENGTH)}\n\n` : ""}Directory tree:
+${existingPages.length > 0 ? `Existing pages (update or keep these, avoid creating overlapping ones):\n${existingPages.join("\n")}\n\n` : ""}${readme ? `README:\n${readme.slice(0, PAGE_PREVIEW_LENGTH)}\n\n` : ""}Directory tree:
 ${tree}`,
       },
     ],
