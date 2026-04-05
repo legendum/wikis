@@ -279,7 +279,7 @@ export const webRoutes = new Elysia()
     const heading = user ? "Your Wikis" : "Wikis";
     const subtitle = user ? "" : "<p>Personal wikis powered by LLMs.</p>";
     const empty = user
-      ? "<li>No wikis yet. Run <code>wikis init</code> in a project.</li>"
+      ? '<li>No wikis yet. Install with <code>curl -fsSL https://wikis.fyi/public/install.sh | sh</code> then run <code>wikis init</code> in a project.</li>'
       : "<li>Coming soon</li>";
     const list = wikis.map((w) => {
       const desc = w.description ? ` — ${escapeHtml(w.description)}` : "";
