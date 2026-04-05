@@ -6,11 +6,15 @@
     "indentWidth": 2,
     "lineEnding": "lf"
   },
+  "files": {
+    "includes": ["**", "!**/node_modules", "!**/dist", "!**/legendum.js"]
+  },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true,
       "suspicious": {
+        "noEmptyBlockStatements": "off",
         "noExplicitAny": "off"
       },
       "style": {

@@ -831,7 +831,7 @@ export function extractMarkdown(content: string): string | null {
   if (!content.trim()) return null;
 
   // Strip outer ```markdown ... ``` fences if present
-  let extracted = content
+  const extracted = content
     .replace(/^```(?:markdown|md)?\n?/, '')
     .replace(/\n?```$/, '')
     .trim();
