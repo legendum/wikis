@@ -11,6 +11,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import yaml from "js-yaml";
 import { Database } from "bun:sqlite";
+import type { LegendumReservation } from "./legendum.js";
 import { IS_HOSTED, CONFIG_DIR } from "./constants";
 import { resolveProvider, type Provider } from "./ai";
 import { log } from "./log";
@@ -60,8 +61,9 @@ export function reserveAmount(provider?: string): number {
 
 // --- Legendum integration ---
 
-let legendum: any = null;
-async function getLegendum() {
+type LegendumModule = typeof import("./legendum.js").default;
+let legendum: LegendumModule | null = null;
+async function getLegendum(): Promise<LegendumModule> {
   if (!legendum) {
     const mod = await import("./legendum.js");
     legendum = mod.default || mod;
@@ -77,8 +79,8 @@ export function shouldBill(userHasOwnKey: boolean): boolean {
 export interface Reservation {
   id: string;
   amount: number;
-  settle: (amount?: number) => Promise<any>;
-  release: () => Promise<void>;
+  settle: LegendumReservation["settle"];
+  release: LegendumReservation["release"];
 }
 
 /**

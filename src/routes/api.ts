@@ -1,9 +1,9 @@
-import { Elysia, t } from "elysia";
+import { Elysia } from "elysia";
 import { extractBearerToken, validateAccountKey, storeAccountKey } from "../lib/auth";
 import { getUserDb, getPublicDb, getUserByEmail, createUser } from "../lib/db";
 import { handleMcpRequest } from "../lib/mcp";
 import { search } from "../lib/search";
-import { getManifest, upsertFile, getFile, listFiles } from "../lib/storage";
+import { getManifest, upsertFile, getFile, hashContent } from "../lib/storage";
 import { indexFile } from "../lib/indexer";
 import { diffManifests, type Manifest } from "../lib/sync";
 
@@ -25,7 +25,7 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   // --- Sync ---
 
   .post("/sync", async ({ body, headers }) => {
-    const { user, db } = authGuard(headers);
+    const { db } = authGuard(headers);
     const { wiki: wikiName, files: localManifest } = body as {
       wiki: string;
       files: Manifest;
@@ -45,7 +45,7 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   })
 
   .post("/push", async ({ body, headers }) => {
-    const { user, db } = authGuard(headers);
+    const { db } = authGuard(headers);
     const { wiki: wikiName, files } = body as {
       wiki: string;
       files: { path: string; content: string; modified: string }[];
@@ -64,7 +64,7 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   })
 
   .post("/pull", async ({ body, headers }) => {
-    const { user, db } = authGuard(headers);
+    const { db } = authGuard(headers);
     const { wiki: wikiName, paths } = body as {
       wiki: string;
       paths: string[];
@@ -99,7 +99,6 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     if (!wiki) return { ok: false, error: "wiki_not_found" };
 
     // Store source files — only update modified_at when content changed
-    const { hashContent } = await import("../lib/storage");
     const now = new Date().toISOString();
     let changed = 0;
     for (const file of files) {
@@ -153,7 +152,7 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   // --- Search ---
 
   .get("/search/:wiki", async ({ params, query, headers }) => {
-    const { user, db } = authGuard(headers);
+    const { db } = authGuard(headers);
     const q = query.q as string;
     if (!q) return { ok: false, error: "missing_query", message: "?q= is required" };
 
@@ -170,13 +169,13 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   // --- Wiki management ---
 
   .get("/wikis", ({ headers }) => {
-    const { user, db } = authGuard(headers);
+    const { db } = authGuard(headers);
     const wikis = db.prepare("SELECT id, name, visibility, created_at FROM wikis ORDER BY name").all();
     return { ok: true, data: { wikis } };
   })
 
   .delete("/wikis/:name", ({ params, headers }) => {
-    const { user, db } = authGuard(headers);
+    const { db } = authGuard(headers);
     const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(params.name) as { id: number } | null;
     if (!wiki) return { ok: false, error: "wiki_not_found" };
 
@@ -193,7 +192,7 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   // --- Usage ---
 
   .get("/usage", ({ headers }) => {
-    const { user, db } = authGuard(headers);
+    const { db } = authGuard(headers);
 
     const period = new Date();
     period.setDate(1);
@@ -262,7 +261,8 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     }
 
     // Validate against Legendum
-    const legendum = require("../lib/legendum");
+    const mod = await import("../lib/legendum.js");
+    const legendum = mod.default || mod;
     try {
       const acct = legendum.account(key);
       const whoami = await acct.whoami();

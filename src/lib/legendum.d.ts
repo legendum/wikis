@@ -68,6 +68,7 @@ export interface LegendumReservation {
 
 /** Account client from `account()` (`lak_*` key). */
 export interface LegendumAccountClient {
+  whoami(): Promise<{ email?: string } & Record<string, unknown>>;
   balance(): Promise<Record<string, unknown>>;
   transactions(limit?: number): Promise<unknown>;
   link(code: string): Promise<unknown>;

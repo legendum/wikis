@@ -190,8 +190,9 @@ export async function handleMcpRequest(
       };
 
     case "tools/call": {
-      const toolName = (params as any)?.name as string;
-      const args = (params as any)?.arguments as Record<string, unknown> || {};
+      const p = params as { name?: string; arguments?: Record<string, unknown> };
+      const toolName = p.name as string;
+      const args = p.arguments ?? {};
       const result = await handleToolCall(db, toolName, args);
       return { jsonrpc: "2.0", id, result };
     }

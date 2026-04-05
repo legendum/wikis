@@ -2,7 +2,7 @@
  * Web routes — server-rendered wiki pages via Eta templates.
  * Handles both public wikis (unauthenticated) and private wikis (authenticated).
  */
-import { Elysia } from "elysia";
+import { Elysia, type Context } from "elysia";
 import { Database } from "bun:sqlite";
 import { getPublicDb, getUserDb } from "../lib/db";
 import { getFile, listFiles, getPageUpdates } from "../lib/storage";
@@ -339,7 +339,7 @@ async function serveWikiPage(
   rawPath: string,
   query: Record<string, string>,
   headers: Record<string, string | undefined>,
-  set: any
+  set: Context["set"],
 ) {
   const wantMarkdown = rawPath.endsWith(".md");
   let loggedIn = false;
@@ -435,7 +435,7 @@ async function serveWikiPage(
   );
 }
 
-/** Resolve the current user from cookies — session cookie or account key cookie. */
+/** Truncate plain text for search result snippets. */
 function snippet(text: string, max = 150): string {
   const clean = text.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   if (clean.length <= max) return clean;
@@ -448,7 +448,8 @@ async function fetchBalance(userId: number): Promise<number | null> {
     const { getUserById } = await import("../lib/db");
     const user = getUserById(userId);
     if (!user?.legendum_token) return null;
-    const legendum = require("../lib/legendum");
+    const mod = await import("../lib/legendum.js");
+    const legendum = mod.default || mod;
     if (!legendum.isConfigured()) return null;
     const data = await legendum.balance(user.legendum_token);
     return data.balance ?? null;
@@ -457,6 +458,7 @@ async function fetchBalance(userId: number): Promise<number | null> {
   }
 }
 
+/** Resolve the current user from cookies — session cookie or account key cookie. */
 function resolveUser(headers: Record<string, string | undefined>): { id: number } | null {
   const cookie = headers.cookie;
   // Check API Bearer token first (CLI)
