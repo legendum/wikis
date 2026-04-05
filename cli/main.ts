@@ -5,7 +5,7 @@
 
 const COMMANDS: Record<string, { description: string; usage?: string }> = {
   init:    { description: "Initialize a wiki in the current project", usage: "wikis init" },
-  login:   { description: "Authenticate with Legendum", usage: "wikis login [--key lak_...]" },
+  login:   { description: "Authenticate with Legendum", usage: "wikis login <lak_...>" },
   sync:    { description: "Push sources and pull wiki pages", usage: "wikis sync [--all]" },
   start:   { description: "Start the background daemon", usage: "wikis start" },
   stop:    { description: "Stop the background daemon", usage: "wikis stop" },

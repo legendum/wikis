@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
-import { extractBearerToken, validateAccountKey } from "../lib/auth";
-import { getUserDb, getPublicDb } from "../lib/db";
+import { extractBearerToken, validateAccountKey, storeAccountKey } from "../lib/auth";
+import { getUserDb, getPublicDb, getUserByEmail, createUser } from "../lib/db";
 import { handleMcpRequest } from "../lib/mcp";
 import { search } from "../lib/search";
 import { getManifest, upsertFile, getFile, listFiles } from "../lib/storage";
@@ -202,6 +202,46 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
         credits_used: usage.credits_used || 0,
       },
     };
+  })
+
+  // --- Login (register account key) ---
+
+  .post("/login", async ({ body }) => {
+    const { key } = body as { key: string };
+    if (!key || !key.startsWith("lak_")) {
+      return { ok: false, error: "invalid_key", message: "Key must start with lak_" };
+    }
+
+    // Already registered?
+    const existing = validateAccountKey(key);
+    if (existing) {
+      return { ok: true, data: { email: existing.email } };
+    }
+
+    // Validate against Legendum
+    const legendum = require("../lib/legendum");
+    try {
+      const acct = legendum.account(key);
+      const whoami = await acct.whoami();
+      const email = whoami.email;
+      if (!email) {
+        return { ok: false, error: "invalid_key", message: "Could not verify account key" };
+      }
+
+      // Find or create user
+      let user = getUserByEmail(email);
+      if (!user) {
+        const userId = createUser(email);
+        user = { id: userId, email, legendum_token: null, db_path: `data/user${userId}.db`, created_at: "" };
+      }
+
+      // Store key hash
+      storeAccountKey(user.id, key);
+
+      return { ok: true, data: { email } };
+    } catch (e) {
+      return { ok: false, error: "invalid_key", message: (e as Error).message };
+    }
   })
 
   // --- MCP server ---

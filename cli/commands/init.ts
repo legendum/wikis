@@ -51,11 +51,13 @@ export default async function init(_args: string[]) {
     console.log();
     const key = await prompt("Legendum account key (see legendum.co.uk), or press Enter to skip: ");
     if (key) {
-      const cfg = readConfig();
-      cfg.account_key = key;
-      writeConfig(cfg);
-      accountKey = key;
-      console.log("Account key saved.");
+      try {
+        const { default: login } = await import("./login");
+        await login([key]);
+        accountKey = key;
+      } catch {
+        console.log("Login failed — continuing without authentication.");
+      }
     } else {
       console.log("Skipped — running in self-hosted mode.");
     }
