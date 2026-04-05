@@ -15,6 +15,8 @@ import { consolidatePages } from "./consolidate";
 import { log } from "./log";
 import { shouldBill, reserve, settle, release, type Reservation } from "./billing";
 
+const SPECIAL_PAGES = new Set(["index.md", "log.md"]);
+
 /** Get the directory tree of all source files for a wiki. */
 function getSourceTree(db: Database, wikiId: number): string {
   const rows = db.prepare(
@@ -211,9 +213,8 @@ async function planSections(
   const tree = getSourceTree(db, wikiId);
   const readme = getSourceFile(db, wikiId, "README.md");
 
-  const SPECIAL = new Set(["index.md", "log.md"]);
   const existingPages = listFiles(db, wikiId)
-    .filter((f) => f.path.endsWith(".md") && !SPECIAL.has(f.path))
+    .filter((f) => f.path.endsWith(".md") && !SPECIAL_PAGES.has(f.path))
     .map((f) => f.path);
 
   log.info(`Planning sections for ${config.name} (calling LLM...)`, { wiki: config.name });
@@ -280,9 +281,8 @@ export async function runAgent(
   // Plan sections if not provided — but skip if wiki already has pages
   let sections = config.sections;
   if (!sections || sections.length === 0) {
-    const SPECIAL = new Set(["index.md", "log.md"]);
-    const existingPages = listFiles(db, wikiId).filter(
-      (f) => f.path.endsWith(".md") && !SPECIAL.has(f.path)
+      const existingPages = listFiles(db, wikiId).filter(
+      (f) => f.path.endsWith(".md") && !SPECIAL_PAGES.has(f.path)
     );
     if (existingPages.length > 0 && !opts.force) {
       // Wiki already has pages — no need to re-plan
@@ -514,7 +514,6 @@ export async function fillMissingPages(
   const MAX_DEPTH = 3;
   if (depth >= MAX_DEPTH) return;
 
-  const SPECIAL = new Set(["index.md", "log.md"]);
   const tree = getSourceTree(db, wikiId);
   const files = listFiles(db, wikiId);
   const existingPaths = new Set(files.map((f) => f.path));
@@ -533,7 +532,7 @@ export async function fillMissingPages(
       let match;
       while ((match = linkRe.exec(lines[i])) !== null) {
         const href = match[2].replace(/^\.\//, "");
-        if (existingPaths.has(href) || SPECIAL.has(href)) continue;
+        if (existingPaths.has(href) || SPECIAL_PAGES.has(href)) continue;
 
         if (!missing.has(href)) {
           missing.set(href, { linkText: match[1], contexts: [] });
@@ -691,8 +690,7 @@ function slugify(name: string): string {
 
 async function updateIndex(db: Database, wikiId: number, config: WikiConfig, agentResult: AgentResult): Promise<void> {
   const files = listFiles(db, wikiId);
-  const SPECIAL = new Set(["index.md", "log.md"]);
-  const pages = files.filter((f) => f.path.endsWith(".md") && !SPECIAL.has(f.path));
+  const pages = files.filter((f) => f.path.endsWith(".md") && !SPECIAL_PAGES.has(f.path));
 
   // Build page list for context
   const pageList = pages.map((p) => {
