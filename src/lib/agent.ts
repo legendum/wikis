@@ -308,6 +308,13 @@ export async function runAgent(
     }
   }
 
+  // Shared chat function for consolidation passes
+  const chatFn = (opts: { messages: import("./ai").ChatMessage[]; description?: string }) =>
+    billedChat(db, wikiId, config, opts);
+
+  // Consolidate existing pages before planning new ones
+  await consolidatePages(db, wikiId, config, chatFn, result);
+
   // Build source tree once for all sections
   const tree = getSourceTree(db, wikiId);
 
@@ -439,8 +446,6 @@ export async function runAgent(
   await fillMissingPages(db, wikiId, config, result);
 
   // Consolidate redundant/overlapping pages
-  const chatFn = (opts: { messages: import("./ai").ChatMessage[]; description?: string }) =>
-    billedChat(db, wikiId, config, opts);
   await consolidatePages(db, wikiId, config, chatFn, result);
 
   const hasChanges = result.pagesCreated.length > 0 || result.pagesUpdated.length > 0;
