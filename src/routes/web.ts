@@ -3,6 +3,7 @@
  * Handles both public wikis (unauthenticated) and private wikis (authenticated).
  */
 import { Elysia } from "elysia";
+import { Database } from "bun:sqlite";
 import { getPublicDb, getUserDb } from "../lib/db";
 import { getFile, listFiles, getPageUpdates } from "../lib/storage";
 import { search } from "../lib/search";
@@ -258,25 +259,47 @@ export const webRoutes = new Elysia()
     const user = resolveUser(headers);
     const balance = user ? await fetchBalance(user.id) : null;
 
-    // Signed in: show user's private wikis
-    // Not signed in: show public wikis
-    const db = user ? getUserDb(user.id) : getPublicDb();
-    const where = user ? "" : "WHERE visibility = 'public'";
-    const wikis = db.prepare(`SELECT name, description, created_at FROM wikis ${where} ORDER BY name`).all() as { name: string; description: string; created_at: string }[];
+    const publicDb = getPublicDb();
+    const publicWikis = publicDb.prepare("SELECT name, description FROM wikis WHERE visibility = 'public' ORDER BY name").all() as { name: string; description: string }[];
+
+    let userWikis: { name: string; description: string }[] = [];
+    if (user) {
+      const db = getUserDb(user.id);
+      userWikis = db.prepare("SELECT name, description FROM wikis ORDER BY name").all() as { name: string; description: string }[];
+    }
 
     // Global search across all visible wikis
     if (query.q) {
       const allResults: { wiki: string; path: string; slug: string; title: string; chunk: string }[] = [];
-      for (const w of wikis) {
-        const wikiRow = db.prepare("SELECT id FROM wikis WHERE name = ?").get(w.name) as { id: number } | null;
+      const searched = new Set<string>();
+
+      if (user) {
+        const db = getUserDb(user.id);
+        for (const w of userWikis) {
+          searched.add(w.name);
+          const wikiRow = db.prepare("SELECT id FROM wikis WHERE name = ?").get(w.name) as { id: number } | null;
+          if (!wikiRow) continue;
+          const results = await search(db, wikiRow.id, query.q, { limit: 10 });
+          for (const r of results) {
+            const slug = r.path.replace(/\.md$/, "");
+            const title = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+            allResults.push({ wiki: w.name, path: r.path, slug, title, chunk: r.chunk });
+          }
+        }
+      }
+
+      for (const w of publicWikis) {
+        if (searched.has(w.name)) continue;
+        const wikiRow = publicDb.prepare("SELECT id FROM wikis WHERE name = ?").get(w.name) as { id: number } | null;
         if (!wikiRow) continue;
-        const results = await search(db, wikiRow.id, query.q, { limit: 10 });
+        const results = await search(publicDb, wikiRow.id, query.q, { limit: 10 });
         for (const r of results) {
           const slug = r.path.replace(/\.md$/, "");
           const title = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
           allResults.push({ wiki: w.name, path: r.path, slug, title, chunk: r.chunk });
         }
       }
+
       const html = allResults
         .map((r) => `<li><a href="/${r.wiki}/${r.slug}"><strong>${r.wiki} / ${r.title}</strong> — ${escapeHtml(snippet(r.chunk))}</a></li>`)
         .join("\n");
@@ -286,18 +309,30 @@ export const webRoutes = new Elysia()
       );
     }
 
-    const heading = user ? "Your Wikis" : "Wikis";
-    const subtitle = user ? "" : "<p>Personal wikis powered by LLMs.</p>";
-    const empty = user
-      ? '<li>No wikis yet. Install with <code>curl -fsSL https://wikis.fyi/public/install.sh | sh</code> then run <code>wikis init</code> in a project.</li>'
-      : "<li>Coming soon</li>";
-    const list = wikis.map((w) => {
-      const desc = w.description ? ` — ${escapeHtml(w.description)}` : "";
-      return `<li><a href="/${w.name}">${w.name}</a>${desc}</li>`;
-    }).join("\n");
+    function wikiList(wikis: { name: string; description: string }[]) {
+      return wikis.map((w) => {
+        const desc = w.description ? ` — ${escapeHtml(w.description)}` : "";
+        return `<li><a href="/${w.name}">${w.name}</a>${desc}</li>`;
+      }).join("\n");
+    }
+
+    let body = `<h1><img src="/public/wikis.png" alt="" class="page-logo">${user ? "Your Wikis" : "Wikis"}</h1>`;
+
+    if (user) {
+      const list = wikiList(userWikis);
+      body += `<ul>${list || '<li>No wikis yet. Install with <code>curl -fsSL https://wikis.fyi/public/install.sh | sh</code> then run <code>wikis init</code> in a project.</li>'}</ul>`;
+    }
+
+    if (publicWikis.length > 0) {
+      if (user) body += "<h2>Public Wikis</h2>";
+      if (!user) body += "<p>Personal wikis powered by LLMs.</p>";
+      body += `<ul>${wikiList(publicWikis)}</ul>`;
+    } else if (!user) {
+      body += "<p>Personal wikis powered by LLMs.</p><ul><li>Coming soon</li></ul>";
+    }
 
     return new Response(
-      htmlPage("Wikis", `<h1><img src="/public/wikis.png" alt="" class="page-logo">${heading}</h1>${subtitle}<ul>${list || empty}</ul>`, { loggedIn: !!user, balance }),
+      htmlPage("Wikis", body, { loggedIn: !!user, balance }),
       { headers: { "Content-Type": "text/html" } }
     );
   })
@@ -325,27 +360,29 @@ async function serveWikiPage(
   let loggedIn = false;
   let balance: number | null = null;
 
-  // Resolve DB — check public first, then private
-  const publicDb = getPublicDb();
-  let wiki = publicDb.prepare("SELECT id FROM wikis WHERE name = ? AND visibility = 'public'").get(project) as { id: number } | null;
-  let db = publicDb;
+  // Resolve DB — check user first, then public
+  const user = resolveUser(headers);
+  let db: Database;
+  let wiki: { id: number } | null = null;
 
-  if (!wiki) {
-    const user = resolveUser(headers);
-
-    if (!user) {
-      set.status = 404;
-      return new Response(htmlPage("Not Found", notFoundBody("This wiki doesn't exist.")), { headers: { "Content-Type": "text/html" } });
-    }
-
+  if (user) {
     loggedIn = true;
     balance = await fetchBalance(user.id);
     db = getUserDb(user.id);
     wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(project) as { id: number } | null;
-    if (!wiki) {
-      set.status = 404;
-      return new Response(htmlPage("Not Found", notFoundBody("This wiki doesn't exist."), { loggedIn, balance }), { headers: { "Content-Type": "text/html" } });
+  }
+
+  if (!wiki) {
+    const publicDb = getPublicDb();
+    wiki = publicDb.prepare("SELECT id FROM wikis WHERE name = ? AND visibility = 'public'").get(project) as { id: number } | null;
+    if (wiki) {
+      db = publicDb;
     }
+  }
+
+  if (!wiki) {
+    set.status = 404;
+    return new Response(htmlPage("Not Found", notFoundBody("This wiki doesn't exist."), { loggedIn, balance }), { headers: { "Content-Type": "text/html" } });
   }
 
   // Handle search
