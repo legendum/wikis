@@ -248,6 +248,9 @@ export const apiRoutes = new Elysia({ prefix: '/api' })
       pagePath
     );
 
+    // Trigger index regeneration on next sync
+    // The index will be rebuilt without this page
+
     return { ok: true };
   })
 

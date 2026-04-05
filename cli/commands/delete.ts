@@ -55,6 +55,8 @@ export default async function deletePage(args: string[]) {
 
   console.log(`Deleting page: ${pageName}...`);
 
+  let serverDeleted = false;
+
   // Delete from server first
   try {
     const response = await fetch(
@@ -67,6 +69,7 @@ export default async function deletePage(args: string[]) {
 
     if (response.ok) {
       console.log(`✅ Removed "${pageName}" from server.`);
+      serverDeleted = true;
     } else {
       console.error(
         `⚠️ Server returned ${response.status}: ${response.statusText}`
@@ -82,6 +85,10 @@ export default async function deletePage(args: string[]) {
     console.log(`✅ Deleted local file: wiki/${pageName}.md`);
   } catch (e) {
     console.error(`⚠️ Failed to delete local file: ${(e as Error).message}`);
+  }
+
+  if (serverDeleted) {
+    console.log('💡 Run "wikis sync" to update the index.md and search index.');
   }
 
   console.log('Done.');
