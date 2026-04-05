@@ -830,9 +830,11 @@ ${sourceContext || '(no relevant sources found)'}`,
 export function extractMarkdown(content: string): string | null {
   if (!content.trim()) return null;
 
-  // Strip ```markdown ... ``` fences
-  const fenced = content.match(/^```(?:markdown|md)?\n([\s\S]*?)\n```$/m);
-  const extracted = fenced ? fenced[1].trim() : content.trim();
+  // Strip outer ```markdown ... ``` fences if present
+  let extracted = content
+    .replace(/^```(?:markdown|md)?\n?/, '')
+    .replace(/\n?```$/, '')
+    .trim();
 
   // Ensure all code blocks are properly closed
   return closeCodeBlocks(extracted);

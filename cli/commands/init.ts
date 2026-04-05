@@ -85,7 +85,7 @@ export default async function init(_args: string[]) {
         type: 'http',
         url: `${apiUrl}/api/mcp`,
         headers: {
-          Authorization: `Bearer ${accountKey || '<your-account-key>'}`,
+          Authorization: 'Bearer <your-legendum-account-key>',
         },
       },
     },
@@ -94,7 +94,9 @@ export default async function init(_args: string[]) {
     resolve(wikiDir, 'mcp.json'),
     JSON.stringify(mcpConfig, null, 2) + '\n'
   );
-  console.log(`  mcp:     wiki/mcp.json`);
+  console.log(
+    `  mcp:     wiki/mcp.json (edit to add your Legendum account key)`
+  );
 
   // 4. First sync
   if (accountKey) {
