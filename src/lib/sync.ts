@@ -11,10 +11,10 @@ export interface FileEntry {
 export type Manifest = Record<string, FileEntry>;
 
 export interface SyncPlan {
-  push: string[];     // files to push (local newer or new)
-  pull: string[];     // files to pull (remote newer or new)
+  push: string[]; // files to push (local newer or new)
+  pull: string[]; // files to pull (remote newer or new)
   conflicts: string[]; // files changed on both sides
-  deleteLocal: string[];  // files deleted on remote
+  deleteLocal: string[]; // files deleted on remote
   deleteRemote: string[]; // files deleted locally
 }
 

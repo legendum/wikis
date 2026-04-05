@@ -3,10 +3,10 @@
  * Adapted from chats2me — non-streaming only (server-side agent).
  */
 
-export type Provider = "xai" | "openai" | "google" | "anthropic";
+export type Provider = 'xai' | 'openai' | 'google' | 'anthropic';
 
 export interface ChatMessage {
-  role: "user" | "assistant" | "system" | "tool";
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   tool_call_id?: string;
 }
@@ -37,17 +37,17 @@ export interface ChatResult {
 }
 
 const ALIASES: Record<string, Provider> = {
-  grok: "xai",
-  gpt: "openai",
-  gemini: "google",
-  claude: "anthropic",
+  grok: 'xai',
+  gpt: 'openai',
+  gemini: 'google',
+  claude: 'anthropic',
 };
 
 const DEFAULT_MODELS: Record<Provider, string> = {
-  xai: "grok-3-mini-fast",
-  openai: "gpt-4o-mini",
-  google: "gemini-2.0-flash",
-  anthropic: "claude-sonnet-4-5-20241022",
+  xai: 'grok-3-mini-fast',
+  openai: 'gpt-4o-mini',
+  google: 'gemini-2.0-flash',
+  anthropic: 'claude-sonnet-4-5-20241022',
 };
 
 export function resolveProvider(input?: string): Provider {
@@ -58,11 +58,13 @@ export function resolveProvider(input?: string): Provider {
 
 /** Detect provider from available env vars. */
 function detectProvider(): Provider {
-  if (process.env.XAI_API_KEY) return "xai";
-  if (process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.GEMINI_API_KEY) return "google";
-  if (process.env.CLAUDE_API_KEY) return "anthropic";
-  throw new Error("No LLM API key configured (XAI_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or CLAUDE_API_KEY)");
+  if (process.env.XAI_API_KEY) return 'xai';
+  if (process.env.OPENAI_API_KEY) return 'openai';
+  if (process.env.GEMINI_API_KEY) return 'google';
+  if (process.env.CLAUDE_API_KEY) return 'anthropic';
+  throw new Error(
+    'No LLM API key configured (XAI_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or CLAUDE_API_KEY)'
+  );
 }
 
 export function defaultModel(provider: Provider): string {
@@ -78,12 +80,12 @@ export async function chat(options: ChatOptions): Promise<ChatResult> {
   const opts = { ...options, provider, model };
 
   switch (provider) {
-    case "xai": {
-      const { chatGrok } = await import("./providers/grok");
+    case 'xai': {
+      const { chatGrok } = await import('./providers/grok');
       return chatGrok(opts);
     }
-    case "openai": {
-      const { chatOpenAI } = await import("./providers/openai");
+    case 'openai': {
+      const { chatOpenAI } = await import('./providers/openai');
       return chatOpenAI(opts);
     }
     default:

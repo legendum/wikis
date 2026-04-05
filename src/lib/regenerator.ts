@@ -5,9 +5,9 @@
  * changes) to avoid burning tokens on active editing. Until the first page
  * exists, we run as soon as possible (setTimeout(0)) so a new wiki doesn't wait.
  */
-import { Database } from "bun:sqlite";
-import { runAgent, type WikiConfig } from "./agent";
-import { log } from "./log";
+import type { Database } from 'bun:sqlite';
+import { runAgent, type WikiConfig } from './agent';
+import { log } from './log';
 
 const DEBOUNCE_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -31,14 +31,17 @@ export function scheduleRegeneration(
   db: Database,
   wikiId: number,
   config: WikiConfig,
-  opts?: { debounce?: boolean; reason?: string },
+  opts?: { debounce?: boolean; reason?: string }
 ): boolean {
   const debounce = opts?.debounce ?? true;
-  const reason = opts?.reason ?? "source files changed";
+  const reason = opts?.reason ?? 'source files changed';
   const key = keyFor(dbPath, wikiId);
 
   if (!debounce && inFlight.has(key)) {
-    log.info(`Regeneration already in progress for ${config.name}, skipping duplicate`, { wiki: config.name });
+    log.info(
+      `Regeneration already in progress for ${config.name}, skipping duplicate`,
+      { wiki: config.name }
+    );
     return false;
   }
 
@@ -46,12 +49,18 @@ export function scheduleRegeneration(
   if (existing) {
     clearTimeout(existing);
     if (debounce) {
-      log.info(`Regeneration timer reset for ${config.name} (15 min)`, { wiki: config.name });
+      log.info(`Regeneration timer reset for ${config.name} (15 min)`, {
+        wiki: config.name,
+      });
     }
   } else if (debounce) {
-    log.info(`Regeneration timer started for ${config.name} (15 min)`, { wiki: config.name });
+    log.info(`Regeneration timer started for ${config.name} (15 min)`, {
+      wiki: config.name,
+    });
   } else {
-    log.info(`Regeneration queued immediately for ${config.name}`, { wiki: config.name });
+    log.info(`Regeneration queued immediately for ${config.name}`, {
+      wiki: config.name,
+    });
   }
 
   const delay = debounce ? DEBOUNCE_MS : 0;
@@ -59,9 +68,14 @@ export function scheduleRegeneration(
   const timer = setTimeout(async () => {
     timers.delete(key);
     if (!debounce) inFlight.add(key);
-    log.info(debounce ? `Regeneration timer fired for ${config.name}` : `Regeneration started for ${config.name}`, {
-      wiki: config.name,
-    });
+    log.info(
+      debounce
+        ? `Regeneration timer fired for ${config.name}`
+        : `Regeneration started for ${config.name}`,
+      {
+        wiki: config.name,
+      }
+    );
     try {
       const result = await runAgent(db, wikiId, config, { reason });
       log.info(`Regeneration complete for ${config.name}`, {

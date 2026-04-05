@@ -2,14 +2,18 @@
  * Web routes — server-rendered wiki pages via Eta templates.
  * Handles both public wikis (unauthenticated) and private wikis (authenticated).
  */
-import { Elysia, type Context } from "elysia";
-import { Database } from "bun:sqlite";
-import { getPublicDb, getUserDb } from "../lib/db";
-import { getFile, listFiles, getPageUpdates } from "../lib/storage";
-import { search } from "../lib/search";
-import { extractBearerToken, validateAccountKey } from "../lib/auth";
-import { getSessionUser } from "./auth";
-import { CONTENT_TYPE_MARKDOWN_UTF8, LEGENDUM_BASE_URL } from "../lib/constants";
+
+import type { Database } from 'bun:sqlite';
+import { type Context, Elysia } from 'elysia';
+import { extractBearerToken, validateAccountKey } from '../lib/auth';
+import {
+  CONTENT_TYPE_MARKDOWN_UTF8,
+  LEGENDUM_BASE_URL,
+} from '../lib/constants';
+import { getPublicDb, getUserDb } from '../lib/db';
+import { search } from '../lib/search';
+import { getFile, getPageUpdates, listFiles } from '../lib/storage';
+import { getSessionUser } from './auth';
 
 /**
  * After a blank line, treat the next line as "end of unclosed fence" only when it clearly
@@ -32,7 +36,11 @@ function looksLikeProseAfterCodeBlank(line: string): boolean {
   if (t.length < 4) return false;
   if (!/^[A-Za-z]/.test(t)) return false;
   if (!/\s/.test(t)) return false;
-  if (/^(const|let|var|function|class|import|export|return|if|for|while|switch|case|default|async|await|interface|type|enum|namespace|def|fn|pub|use|mod|struct|trait|impl|package)\b/.test(t)) {
+  if (
+    /^(const|let|var|function|class|import|export|return|if|for|while|switch|case|default|async|await|interface|type|enum|namespace|def|fn|pub|use|mod|struct|trait|impl|package)\b/.test(
+      t
+    )
+  ) {
     return false;
   }
   return true;
@@ -41,7 +49,7 @@ function looksLikeProseAfterCodeBlank(line: string): boolean {
 /** Strip the opening fence's indent from each body line (nested / list-indented ``` blocks). */
 function dedentFenceLine(line: string, indent: string): string {
   if (!indent) return line;
-  if (line === "") return "";
+  if (line === '') return '';
   if (line.startsWith(indent)) return line.slice(indent.length);
   return line;
 }
@@ -51,8 +59,11 @@ function dedentFenceLine(line: string, indent: string): string {
  * line followed by a new markdown block or obvious prose (AI docs often use only a blank line).
  * Opening fences may be indented (e.g. under list items); body lines are dedented by that amount.
  */
-function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: string[] } {
-  const lines = md.split("\n");
+function extractFencedCodeBlocks(md: string): {
+  processed: string;
+  codeBlocks: string[];
+} {
+  const lines = md.split('\n');
   const out: string[] = [];
   const codeBlocks: string[] = [];
   let i = 0;
@@ -65,8 +76,8 @@ function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: s
       continue;
     }
 
-    const fenceIndent = open[1] ?? "";
-    const lang = open[2] ?? "";
+    const fenceIndent = open[1] ?? '';
+    const lang = open[2] ?? '';
     const openingLine = lines[i];
     i++;
 
@@ -84,11 +95,14 @@ function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: s
       if (
         !line.trim() &&
         i + 1 < lines.length &&
-        lines[i + 1].trim() !== "" &&
+        lines[i + 1].trim() !== '' &&
         codeLines.length > 0
       ) {
         const next = lines[i + 1];
-        if (looksLikeImplicitFenceTerminator(next) || looksLikeProseAfterCodeBlank(next)) {
+        if (
+          looksLikeImplicitFenceTerminator(next) ||
+          looksLikeProseAfterCodeBlank(next)
+        ) {
           break;
         }
       }
@@ -97,7 +111,7 @@ function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: s
       i++;
     }
 
-    const rawCode = codeLines.join("\n");
+    const rawCode = codeLines.join('\n');
     const trimmed = rawCode.trim();
     if (!trimmed) {
       out.push(openingLine);
@@ -107,44 +121,54 @@ function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: s
     }
 
     const idx = codeBlocks.length;
-    codeBlocks.push(`<pre><code class="language-${lang || "text"}">${escapeHtml(trimmed)}</code></pre>`);
+    codeBlocks.push(
+      `<pre><code class="language-${lang || 'text'}">${escapeHtml(trimmed)}</code></pre>`
+    );
     out.push(`%%CODEBLOCK_${idx}%%`);
   }
 
-  return { processed: out.join("\n"), codeBlocks };
+  return { processed: out.join('\n'), codeBlocks };
 }
 
 // Simple markdown → HTML (basic for now — headings, links, code, paragraphs)
 function renderMarkdown(md: string, project?: string): string {
   // Phase 1: extract code blocks into placeholders
-  const { processed: mdWithoutFences, codeBlocks } = extractFencedCodeBlocks(md);
+  const { processed: mdWithoutFences, codeBlocks } =
+    extractFencedCodeBlocks(md);
   let processed = mdWithoutFences;
 
   // Phase 2: inline formatting
   processed = processed
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/^#### (.+)$/gm, "<h4>$1</h4>")
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, '<h1><img src="/public/wikis.png" alt="" class="page-logo">$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(
+      /^# (.+)$/gm,
+      '<h1><img src="/public/wikis.png" alt="" class="page-logo">$1</h1>'
+    )
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
     // Images (before links so ![...](...) isn't caught by link regex)
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
     // Wiki .md links
-    .replace(/\[([^\]]+)\]\(([^/)][^)]*?)\.md\)/g, (_, text, slug) =>
-      `<a href="/${project || ""}/${slug}">${text}</a>`)
+    .replace(
+      /\[([^\]]+)\]\(([^/)][^)]*?)\.md\)/g,
+      (_, text, slug) => `<a href="/${project || ''}/${slug}">${text}</a>`
+    )
     // External links
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2">$1</a>')
     // Bare wiki links like [page-name.md] (no round brackets)
     .replace(/\[([^\]]+?)\.md\](?!\()/g, (_, slug) => {
-      const title = slug.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
-      return `<a href="/${project || ""}/${slug}">${title}</a>`;
+      const title = slug
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, (c: string) => c.toUpperCase());
+      return `<a href="/${project || ''}/${slug}">${title}</a>`;
     })
-    .replace(/^---$/gm, "<hr>");
+    .replace(/^---$/gm, '<hr>');
 
   // Phase 3: block-level elements (line by line)
-  const lines = processed.split("\n");
+  const lines = processed.split('\n');
   const out: string[] = [];
   let i = 0;
 
@@ -152,7 +176,7 @@ function renderMarkdown(md: string, project?: string): string {
     const line = lines[i];
 
     // Code block placeholder — pass through
-    if (line.trim().startsWith("%%CODEBLOCK_")) {
+    if (line.trim().startsWith('%%CODEBLOCK_')) {
       out.push(line);
       i++;
       continue;
@@ -169,37 +193,51 @@ function renderMarkdown(md: string, project?: string): string {
     if (/^> /.test(line)) {
       const bqLines: string[] = [];
       while (i < lines.length && /^> ?/.test(lines[i])) {
-        bqLines.push(lines[i].replace(/^> ?/, ""));
+        bqLines.push(lines[i].replace(/^> ?/, ''));
         i++;
       }
-      out.push(`<blockquote>${bqLines.join("<br>")}</blockquote>`);
+      out.push(`<blockquote>${bqLines.join('<br>')}</blockquote>`);
       continue;
     }
 
     // Tables
-    if (line.startsWith("|") && i + 1 < lines.length && /^\|[-| :]+\|$/.test(lines[i + 1])) {
-      const headers = line.split("|").filter(Boolean).map((h: string) => `<th>${h.trim()}</th>`).join("");
+    if (
+      line.startsWith('|') &&
+      i + 1 < lines.length &&
+      /^\|[-| :]+\|$/.test(lines[i + 1])
+    ) {
+      const headers = line
+        .split('|')
+        .filter(Boolean)
+        .map((h: string) => `<th>${h.trim()}</th>`)
+        .join('');
       i += 2; // skip header + separator
       const rows: string[] = [];
-      while (i < lines.length && lines[i].startsWith("|")) {
-        const cells = lines[i].split("|").filter(Boolean).map((c: string) => `<td>${c.trim()}</td>`).join("");
+      while (i < lines.length && lines[i].startsWith('|')) {
+        const cells = lines[i]
+          .split('|')
+          .filter(Boolean)
+          .map((c: string) => `<td>${c.trim()}</td>`)
+          .join('');
         rows.push(`<tr>${cells}</tr>`);
         i++;
       }
-      out.push(`<table><thead><tr>${headers}</tr></thead><tbody>${rows.join("")}</tbody></table>`);
+      out.push(
+        `<table><thead><tr>${headers}</tr></thead><tbody>${rows.join('')}</tbody></table>`
+      );
       continue;
     }
 
     // Unordered lists (with nesting)
     if (/^( *)- /.test(line)) {
-      out.push(renderList(lines, i, "ul"));
+      out.push(renderList(lines, i, 'ul'));
       while (i < lines.length && /^( *)- /.test(lines[i])) i++;
       continue;
     }
 
     // Ordered lists (with nesting)
     if (/^( *)\d+\. /.test(line)) {
-      out.push(renderList(lines, i, "ol"));
+      out.push(renderList(lines, i, 'ol'));
       while (i < lines.length && /^( *)\d+\. /.test(lines[i])) i++;
       continue;
     }
@@ -211,7 +249,7 @@ function renderMarkdown(md: string, project?: string): string {
     i++;
   }
 
-  processed = out.join("\n");
+  processed = out.join('\n');
 
   // Phase 4: restore code blocks
   for (let j = 0; j < codeBlocks.length; j++) {
@@ -222,8 +260,8 @@ function renderMarkdown(md: string, project?: string): string {
 }
 
 /** Render a nested list (ul or ol) starting at the given line index. */
-function renderList(lines: string[], start: number, tag: "ul" | "ol"): string {
-  const pattern = tag === "ul" ? /^( *)- (.+)$/ : /^( *)\d+\. (.+)$/;
+function renderList(lines: string[], start: number, tag: 'ul' | 'ol'): string {
+  const pattern = tag === 'ul' ? /^( *)- (.+)$/ : /^( *)\d+\. (.+)$/;
   const items: { indent: number; text: string }[] = [];
 
   let i = start;
@@ -234,7 +272,11 @@ function renderList(lines: string[], start: number, tag: "ul" | "ol"): string {
     i++;
   }
 
-  function build(items: { indent: number; text: string }[], idx: number, baseIndent: number): { html: string; next: number } {
+  function build(
+    items: { indent: number; text: string }[],
+    idx: number,
+    baseIndent: number
+  ): { html: string; next: number } {
     let html = `<${tag}>`;
     let j = idx;
     while (j < items.length && items[j].indent >= baseIndent) {
@@ -272,9 +314,10 @@ interface PageOpts {
 
 function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
   const creditsUrl = `${LEGENDUM_BASE_URL}/account`;
-  const balancePill = opts.balance != null
-    ? `<span class="icon pill">&#x2C60; ${opts.balance.toLocaleString()}</span> `
-    : `<span class="icon circle">&#x2C60;</span> `;
+  const balancePill =
+    opts.balance != null
+      ? `<span class="icon pill">&#x2C60; ${opts.balance.toLocaleString()}</span> `
+      : `<span class="icon circle">&#x2C60;</span> `;
   const loginLink = opts.loggedIn
     ? `<a href="${creditsUrl}" target="_blank" class="login">${balancePill}Buy Credits</a>`
     : `<a href="/login" class="login"><span class="icon circle">&#x2C60;</span> Log in with Legendum</a>`;
@@ -302,13 +345,17 @@ function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
 <body>
   <header>
     <nav>
-      <span><a href="/">Wikis</a>${opts.nav || ""}</span>
+      <span><a href="/">Wikis</a>${opts.nav || ''}</span>
       ${loginLink}
     </nav>
-    ${opts.hideSearch ? "" : `<form class="search" method="get">
-      <input type="text" name="q" placeholder="Search..." value="${escapeHtml(opts.searchQuery || "")}" aria-label="Search" autocomplete="off">
+    ${
+      opts.hideSearch
+        ? ''
+        : `<form class="search" method="get">
+      <input type="text" name="q" placeholder="Search..." value="${escapeHtml(opts.searchQuery || '')}" aria-label="Search" autocomplete="off">
       <div class="search-results" hidden></div>
-    </form>`}
+    </form>`
+    }
   </header>
   <main>${body}</main>
   <footer><p>Powered by <a href="https://legendum.co.uk">Legendum</a></p></footer>
@@ -354,48 +401,79 @@ function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
 export const webRoutes = new Elysia()
 
   // Landing page — alphabetical wiki index
-  .get("/", async ({ headers, query }) => {
+  .get('/', async ({ headers, query }) => {
     const user = resolveUser(headers);
     const balance = user ? await fetchBalance(user.id) : null;
 
     const publicDb = getPublicDb();
-    const publicWikis = publicDb.prepare("SELECT name, description FROM wikis WHERE visibility = 'public' ORDER BY name").all() as { name: string; description: string }[];
+    const publicWikis = publicDb
+      .prepare(
+        "SELECT name, description FROM wikis WHERE visibility = 'public' ORDER BY name"
+      )
+      .all() as { name: string; description: string }[];
 
     let userWikis: { name: string; description: string }[] = [];
     if (user) {
       const db = getUserDb(user.id);
-      userWikis = db.prepare("SELECT name, description FROM wikis ORDER BY name").all() as { name: string; description: string }[];
+      userWikis = db
+        .prepare('SELECT name, description FROM wikis ORDER BY name')
+        .all() as { name: string; description: string }[];
     }
 
     // Search user's wikis only (public wikis have per-wiki search)
     if (query.q && user) {
-      const allResults: { wiki: string; path: string; slug: string; title: string; chunk: string }[] = [];
+      const allResults: {
+        wiki: string;
+        path: string;
+        slug: string;
+        title: string;
+        chunk: string;
+      }[] = [];
       const db = getUserDb(user.id);
       for (const w of userWikis) {
-        const wikiRow = db.prepare("SELECT id FROM wikis WHERE name = ?").get(w.name) as { id: number } | null;
+        const wikiRow = db
+          .prepare('SELECT id FROM wikis WHERE name = ?')
+          .get(w.name) as { id: number } | null;
         if (!wikiRow) continue;
         const results = await search(db, wikiRow.id, query.q, { limit: 10 });
         for (const r of results) {
-          const slug = r.path.replace(/\.md$/, "");
-          const title = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-          allResults.push({ wiki: w.name, path: r.path, slug, title, chunk: r.chunk });
+          const slug = r.path.replace(/\.md$/, '');
+          const title = slug
+            .replace(/-/g, ' ')
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+          allResults.push({
+            wiki: w.name,
+            path: r.path,
+            slug,
+            title,
+            chunk: r.chunk,
+          });
         }
       }
 
       const html = allResults
-        .map((r) => `<li><a href="/${r.wiki}/${r.slug}"><strong>${r.wiki} / ${r.title}</strong> — ${escapeHtml(snippet(r.chunk))}</a></li>`)
-        .join("\n");
+        .map(
+          (r) =>
+            `<li><a href="/${r.wiki}/${r.slug}"><strong>${r.wiki} / ${r.title}</strong> — ${escapeHtml(snippet(r.chunk))}</a></li>`
+        )
+        .join('\n');
       return new Response(
-        htmlPage("Search", `<h1>Search: ${escapeHtml(query.q)}</h1><ul>${html || "<li>No results</li>"}</ul>`, { searchQuery: query.q, loggedIn: !!user, balance }),
-        { headers: { "Content-Type": "text/html" } }
+        htmlPage(
+          'Search',
+          `<h1>Search: ${escapeHtml(query.q)}</h1><ul>${html || '<li>No results</li>'}</ul>`,
+          { searchQuery: query.q, loggedIn: !!user, balance }
+        ),
+        { headers: { 'Content-Type': 'text/html' } }
       );
     }
 
     function wikiList(wikis: { name: string; description: string }[]) {
-      return wikis.map((w) => {
-        const desc = w.description ? ` — ${escapeHtml(w.description)}` : "";
-        return `<li><a href="/${w.name}">${w.name}</a>${desc}</li>`;
-      }).join("\n");
+      return wikis
+        .map((w) => {
+          const desc = w.description ? ` — ${escapeHtml(w.description)}` : '';
+          return `<li><a href="/${w.name}">${w.name}</a>${desc}</li>`;
+        })
+        .join('\n');
     }
 
     let body = `<h1><img src="/public/wikis.png" alt="" class="page-logo">Your Wikis</h1>`;
@@ -415,20 +493,20 @@ export const webRoutes = new Elysia()
     }
 
     return new Response(
-      htmlPage("Wikis", body, { loggedIn: !!user, balance, hideSearch: !user }),
-      { headers: { "Content-Type": "text/html" } }
+      htmlPage('Wikis', body, { loggedIn: !!user, balance, hideSearch: !user }),
+      { headers: { 'Content-Type': 'text/html' } }
     );
   })
 
   // Wiki page routes: /{project}, /{project}/{path...}
-  .get("/:project", ({ params, query, headers, set }) => {
+  .get('/:project', ({ params, query, headers, set }) => {
     // /depends or /depends.md both serve index.md
-    const name = params.project.replace(/\.md$/, "");
-    const wantMd = params.project.endsWith(".md");
-    return serveWikiPage(name, wantMd ? "index.md" : "", query, headers, set);
+    const name = params.project.replace(/\.md$/, '');
+    const wantMd = params.project.endsWith('.md');
+    return serveWikiPage(name, wantMd ? 'index.md' : '', query, headers, set);
   })
-  .get("/:project/*", ({ params, query, headers, set }) => {
-    const rest = params["*"];
+  .get('/:project/*', ({ params, query, headers, set }) => {
+    const rest = params['*'];
     return serveWikiPage(params.project, rest, query, headers, set);
   });
 
@@ -437,9 +515,9 @@ async function serveWikiPage(
   rawPath: string,
   query: Record<string, string>,
   headers: Record<string, string | undefined>,
-  set: Context["set"],
+  set: Context['set']
 ) {
-  const wantMarkdown = rawPath.endsWith(".md");
+  const wantMarkdown = rawPath.endsWith('.md');
   let loggedIn = false;
   let balance: number | null = null;
 
@@ -452,12 +530,16 @@ async function serveWikiPage(
     loggedIn = true;
     balance = await fetchBalance(user.id);
     db = getUserDb(user.id);
-    wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(project) as { id: number } | null;
+    wiki = db.prepare('SELECT id FROM wikis WHERE name = ?').get(project) as {
+      id: number;
+    } | null;
   }
 
   if (!wiki) {
     const publicDb = getPublicDb();
-    wiki = publicDb.prepare("SELECT id FROM wikis WHERE name = ? AND visibility = 'public'").get(project) as { id: number } | null;
+    wiki = publicDb
+      .prepare("SELECT id FROM wikis WHERE name = ? AND visibility = 'public'")
+      .get(project) as { id: number } | null;
     if (wiki) {
       db = publicDb;
     }
@@ -465,37 +547,54 @@ async function serveWikiPage(
 
   if (!wiki) {
     set.status = 404;
-    return new Response(htmlPage("Not Found", notFoundBody("This wiki doesn't exist."), { loggedIn, balance }), { headers: { "Content-Type": "text/html" } });
+    return new Response(
+      htmlPage('Not Found', notFoundBody("This wiki doesn't exist."), {
+        loggedIn,
+        balance,
+      }),
+      { headers: { 'Content-Type': 'text/html' } }
+    );
   }
 
   // Handle search
   if (query.q) {
     const results = await search(db, wiki.id, query.q, { limit: 20 });
     if (wantMarkdown) {
-      const md = results.map((r) => `- [${r.path}](/${project}/${r.path}): ${r.chunk.slice(0, 100)}...`).join("\n");
-      return new Response(`# Search: ${query.q}\n\n${md || "No results."}`, {
-        headers: { "Content-Type": CONTENT_TYPE_MARKDOWN_UTF8 },
+      const md = results
+        .map(
+          (r) =>
+            `- [${r.path}](/${project}/${r.path}): ${r.chunk.slice(0, 100)}...`
+        )
+        .join('\n');
+      return new Response(`# Search: ${query.q}\n\n${md || 'No results.'}`, {
+        headers: { 'Content-Type': CONTENT_TYPE_MARKDOWN_UTF8 },
       });
     }
     const html = results
       .map((r) => {
-        const slug = r.path.replace(/\.md$/, "");
-        const title = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        const slug = r.path.replace(/\.md$/, '');
+        const title = slug
+          .replace(/-/g, ' ')
+          .replace(/\b\w/g, (c) => c.toUpperCase());
         return `<li><a href="/${project}/${slug}"><strong>${title}</strong> — ${escapeHtml(snippet(r.chunk))}</a></li>`;
       })
-      .join("\n");
+      .join('\n');
     const navSearch = ` / <a href="/${project}">${project}</a> / <strong>Search</strong>`;
     return new Response(
-      htmlPage(`Search: ${query.q}`, `<h1>Search: ${escapeHtml(query.q)}</h1><ul>${html || "<li>No results</li>"}</ul>`, { nav: navSearch, searchQuery: query.q, loggedIn, balance }),
-      { headers: { "Content-Type": "text/html" } }
+      htmlPage(
+        `Search: ${query.q}`,
+        `<h1>Search: ${escapeHtml(query.q)}</h1><ul>${html || '<li>No results</li>'}</ul>`,
+        { nav: navSearch, searchQuery: query.q, loggedIn, balance }
+      ),
+      { headers: { 'Content-Type': 'text/html' } }
     );
   }
 
   // Resolve file path — flat structure, no pages/ prefix
   let filePath: string;
-  const slug = wantMarkdown ? rawPath.replace(/\.md$/, "") : rawPath;
-  if (slug === "" || slug === "index") {
-    filePath = "index.md";
+  const slug = wantMarkdown ? rawPath.replace(/\.md$/, '') : rawPath;
+  if (slug === '' || slug === 'index') {
+    filePath = 'index.md';
   } else {
     filePath = `${slug}.md`;
   }
@@ -504,49 +603,62 @@ async function serveWikiPage(
   if (!file || !file.content) {
     set.status = 404;
     if (wantMarkdown) {
-      return new Response("# Not Found\n", { headers: { "Content-Type": CONTENT_TYPE_MARKDOWN_UTF8 } });
+      return new Response('# Not Found\n', {
+        headers: { 'Content-Type': CONTENT_TYPE_MARKDOWN_UTF8 },
+      });
     }
-    return new Response(htmlPage("Not Found", notFoundBody("This page doesn't exist yet."), { loggedIn, balance }), { headers: { "Content-Type": "text/html" } });
+    return new Response(
+      htmlPage('Not Found', notFoundBody("This page doesn't exist yet."), {
+        loggedIn,
+        balance,
+      }),
+      { headers: { 'Content-Type': 'text/html' } }
+    );
   }
 
   if (wantMarkdown) {
-    return new Response(file.content, { headers: { "Content-Type": CONTENT_TYPE_MARKDOWN_UTF8 } });
+    return new Response(file.content, {
+      headers: { 'Content-Type': CONTENT_TYPE_MARKDOWN_UTF8 },
+    });
   }
 
   // Render HTML
-  const pageSlug = file.path.replace(".md", "");
-  const pageTitle = pageSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const pageSlug = file.path.replace('.md', '');
+  const pageTitle = pageSlug
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
   const projectTitle = project.charAt(0).toUpperCase() + project.slice(1);
-  const isIndex = file.path === "index.md";
+  const isIndex = file.path === 'index.md';
   const nav = isIndex
     ? ` / <strong>${projectTitle}</strong>`
     : ` / <a href="/${project}">${projectTitle}</a> / <strong>${pageTitle}</strong>`;
   const title = isIndex ? projectTitle : `${projectTitle} / ${pageTitle}`;
   const body = renderMarkdown(file.content, project);
   const updates = getPageUpdates(db, wiki.id, filePath);
-  const updatesHtml = updates.length > 0
-    ? `<details class="page-updates"><summary>Recent changes</summary><ul>${updates.map((u) => `<li><time>${u.created_at}</time> ${escapeHtml(u.summary)}</li>`).join("")}</ul></details>`
-    : "";
+  const updatesHtml =
+    updates.length > 0
+      ? `<details class="page-updates"><summary>Recent changes</summary><ul>${updates.map((u) => `<li><time>${u.created_at}</time> ${escapeHtml(u.summary)}</li>`).join('')}</ul></details>`
+      : '';
   return new Response(
     htmlPage(title, body + updatesHtml, { nav, loggedIn, balance }),
-    { headers: { "Content-Type": "text/html" } }
+    { headers: { 'Content-Type': 'text/html' } }
   );
 }
 
 /** Truncate plain text for search result snippets. */
 function snippet(text: string, max = 150): string {
-  const clean = text.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+  const clean = text.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
   if (clean.length <= max) return clean;
-  const cut = clean.lastIndexOf(" ", max);
-  return clean.slice(0, cut > 0 ? cut : max) + "…";
+  const cut = clean.lastIndexOf(' ', max);
+  return clean.slice(0, cut > 0 ? cut : max) + '…';
 }
 
 async function fetchBalance(userId: number): Promise<number | null> {
   try {
-    const { getUserById } = await import("../lib/db");
+    const { getUserById } = await import('../lib/db');
     const user = getUserById(userId);
     if (!user?.legendum_token) return null;
-    const mod = await import("../lib/legendum.js");
+    const mod = await import('../lib/legendum.js');
     const legendum = mod.default || mod;
     if (!legendum.isConfigured()) return null;
     const data = await legendum.balance(user.legendum_token);
@@ -557,7 +669,9 @@ async function fetchBalance(userId: number): Promise<number | null> {
 }
 
 /** Resolve the current user from cookies — session cookie or account key cookie. */
-function resolveUser(headers: Record<string, string | undefined>): { id: number } | null {
+function resolveUser(
+  headers: Record<string, string | undefined>
+): { id: number } | null {
   const cookie = headers.cookie;
   // Check API Bearer token first (CLI)
   const bearerToken = extractBearerToken(headers.authorization);
@@ -580,7 +694,11 @@ function resolveUser(headers: Record<string, string | undefined>): { id: number 
 }
 
 function escapeHtml(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function notFoundBody(message: string): string {

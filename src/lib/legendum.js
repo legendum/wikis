@@ -49,27 +49,32 @@
  */
 
 function create(config) {
-  const baseUrl = (config && config.baseUrl) || env("LEGENDUM_BASE_URL") || "https://legendum.co.uk";
-  const apiKey = (config && config.apiKey) || env("LEGENDUM_API_KEY");
-  const secret = (config && config.secret) || env("LEGENDUM_SECRET");
+  const baseUrl =
+    (config && config.baseUrl) ||
+    env('LEGENDUM_BASE_URL') ||
+    'https://legendum.co.uk';
+  const apiKey = (config && config.apiKey) || env('LEGENDUM_API_KEY');
+  const secret = (config && config.secret) || env('LEGENDUM_SECRET');
 
   if (!apiKey || !secret) {
-    throw new Error("Legendum SDK: LEGENDUM_API_KEY and LEGENDUM_SECRET are required");
+    throw new Error(
+      'Legendum SDK: LEGENDUM_API_KEY and LEGENDUM_SECRET are required'
+    );
   }
 
-  var base = baseUrl.replace(/\/+$/, "");
+  var base = baseUrl.replace(/\/+$/, '');
 
   function env(name) {
-    if (typeof process !== "undefined" && process.env) return process.env[name];
+    if (typeof process !== 'undefined' && process.env) return process.env[name];
     return undefined;
   }
 
   function headers(json) {
     var h = {
-      "X-API-Key": apiKey,
-      "Authorization": "Bearer " + secret,
+      'X-API-Key': apiKey,
+      Authorization: 'Bearer ' + secret,
     };
-    if (json) h["Content-Type"] = "application/json";
+    if (json) h['Content-Type'] = 'application/json';
     return h;
   }
 
@@ -79,7 +84,7 @@ function create(config) {
     var res = await fetch(base + path, opts);
     var data = await res.json();
     if (!data.ok) {
-      var err = new Error(data.message || data.error || "Legendum API error");
+      var err = new Error(data.message || data.error || 'Legendum API error');
       err.code = data.error;
       err.status = res.status;
       throw err;
@@ -104,7 +109,7 @@ function create(config) {
       };
       if (opts && opts.key) body.key = opts.key;
       if (opts && opts.meta) body.meta = opts.meta;
-      return request("POST", "/api/charge", body);
+      return request('POST', '/api/charge', body);
     },
 
     /**
@@ -113,7 +118,10 @@ function create(config) {
      * @returns {Promise<{ balance: number, held: number }>}
      */
     async balance(accountToken) {
-      return request("GET", "/api/balance?token=" + encodeURIComponent(accountToken));
+      return request(
+        'GET',
+        '/api/balance?token=' + encodeURIComponent(accountToken)
+      );
     },
 
     /**
@@ -126,7 +134,7 @@ function create(config) {
     async reserve(accountToken, amount, description) {
       var body = { account_token: accountToken, amount: amount };
       if (description) body.description = description;
-      var data = await request("POST", "/api/reserve", body);
+      var data = await request('POST', '/api/reserve', body);
       return {
         id: data.reservation_id,
         amount: amount,
@@ -136,7 +144,7 @@ function create(config) {
          * @returns {Promise<{ email: string, transaction_id: number, balance: number }>}
          */
         async settle(settleAmount) {
-          return request("POST", "/api/settle", {
+          return request('POST', '/api/settle', {
             reservation_id: data.reservation_id,
             amount: settleAmount,
           });
@@ -145,7 +153,7 @@ function create(config) {
          * Release the reservation (cancel, no charge).
          */
         async release() {
-          return request("POST", "/api/release", {
+          return request('POST', '/api/release', {
             reservation_id: data.reservation_id,
           });
         },
@@ -157,7 +165,7 @@ function create(config) {
      * @returns {Promise<{ code: string, request_id: string }>}
      */
     async requestLink() {
-      return request("POST", "/api/link", {});
+      return request('POST', '/api/link', {});
     },
 
     /**
@@ -166,7 +174,7 @@ function create(config) {
      * @returns {Promise<{ status: string, account_token?: string }>}
      */
     async pollLink(requestId) {
-      return request("GET", "/api/link/" + encodeURIComponent(requestId));
+      return request('GET', '/api/link/' + encodeURIComponent(requestId));
     },
 
     /**
@@ -178,9 +186,15 @@ function create(config) {
      * @returns {string} The authorize URL
      */
     authUrl(opts) {
-      return base + "/auth/authorize?client_id=" + encodeURIComponent(apiKey)
-        + "&redirect_uri=" + encodeURIComponent(opts.redirectUri)
-        + "&state=" + encodeURIComponent(opts.state);
+      return (
+        base +
+        '/auth/authorize?client_id=' +
+        encodeURIComponent(apiKey) +
+        '&redirect_uri=' +
+        encodeURIComponent(opts.redirectUri) +
+        '&state=' +
+        encodeURIComponent(opts.state)
+      );
     },
 
     /**
@@ -195,13 +209,20 @@ function create(config) {
      */
     authAndLinkUrl(opts) {
       if (!opts || !opts.linkCode) {
-        throw new Error("Legendum SDK: authAndLinkUrl requires linkCode");
+        throw new Error('Legendum SDK: authAndLinkUrl requires linkCode');
       }
-      return base + "/auth/authorize?client_id=" + encodeURIComponent(apiKey)
-        + "&redirect_uri=" + encodeURIComponent(opts.redirectUri)
-        + "&state=" + encodeURIComponent(opts.state)
-        + "&intent=login_link"
-        + "&link_code=" + encodeURIComponent(opts.linkCode);
+      return (
+        base +
+        '/auth/authorize?client_id=' +
+        encodeURIComponent(apiKey) +
+        '&redirect_uri=' +
+        encodeURIComponent(opts.redirectUri) +
+        '&state=' +
+        encodeURIComponent(opts.state) +
+        '&intent=login_link' +
+        '&link_code=' +
+        encodeURIComponent(opts.linkCode)
+      );
     },
 
     /**
@@ -213,7 +234,10 @@ function create(config) {
      *   When `linked` is true, `legendum_token` is the opaque account-service token for charge/balance/reserve.
      */
     async exchangeCode(code, redirectUri) {
-      return request("POST", "/api/auth/token", { code: code, redirect_uri: redirectUri });
+      return request('POST', '/api/auth/token', {
+        code: code,
+        redirect_uri: redirectUri,
+      });
     },
 
     /**
@@ -224,7 +248,11 @@ function create(config) {
      * @returns {Promise<{ token: string, email: string }>}
      */
     async linkAccount(accountKey) {
-      return request("POST", "/api/agent/link-service", { api_key: apiKey, secret: secret, account_key: accountKey });
+      return request('POST', '/api/agent/link-service', {
+        api_key: apiKey,
+        secret: secret,
+        account_key: accountKey,
+      });
     },
 
     /**
@@ -239,16 +267,18 @@ function create(config) {
       var deadline = Date.now() + timeout;
       while (Date.now() < deadline) {
         var result = await this.pollLink(requestId);
-        if (result.status === "confirmed") return result;
-        if (result.status === "expired") {
-          var err = new Error("Link request expired");
-          err.code = "link_expired";
+        if (result.status === 'confirmed') return result;
+        if (result.status === 'expired') {
+          var err = new Error('Link request expired');
+          err.code = 'link_expired';
           throw err;
         }
-        await new Promise(function (r) { setTimeout(r, interval); });
+        await new Promise((r) => {
+          setTimeout(r, interval);
+        });
       }
-      var err2 = new Error("Link polling timed out");
-      err2.code = "timeout";
+      var err2 = new Error('Link polling timed out');
+      err2.code = 'timeout';
       throw err2;
     },
 
@@ -259,7 +289,11 @@ function create(config) {
      * @param {object} opts - { threshold, amount?, client? } — `client` defaults to this service client
      */
     tab(accountToken, description, opts) {
-      return tab(accountToken, description, Object.assign({}, opts || {}, { client: this }));
+      return tab(
+        accountToken,
+        description,
+        Object.assign({}, opts || {}, { client: this })
+      );
     },
   };
 }
@@ -278,17 +312,20 @@ function create(config) {
  *   await acct.link('ABC123');
  */
 function account(accountKey, config) {
-  var baseUrl = (config && config.baseUrl) || env("LEGENDUM_BASE_URL") || "https://legendum.co.uk";
-  var base = baseUrl.replace(/\/+$/, "");
+  var baseUrl =
+    (config && config.baseUrl) ||
+    env('LEGENDUM_BASE_URL') ||
+    'https://legendum.co.uk';
+  var base = baseUrl.replace(/\/+$/, '');
 
   function env(name) {
-    if (typeof process !== "undefined" && process.env) return process.env[name];
+    if (typeof process !== 'undefined' && process.env) return process.env[name];
     return undefined;
   }
 
   function headers(json) {
-    var h = { "Authorization": "Bearer " + accountKey };
-    if (json) h["Content-Type"] = "application/json";
+    var h = { Authorization: 'Bearer ' + accountKey };
+    if (json) h['Content-Type'] = 'application/json';
     return h;
   }
 
@@ -298,7 +335,7 @@ function account(accountKey, config) {
     var res = await fetch(base + path, opts);
     var data = await res.json();
     if (!data.ok) {
-      var err = new Error(data.message || data.error || "Legendum API error");
+      var err = new Error(data.message || data.error || 'Legendum API error');
       err.code = data.error;
       err.status = res.status;
       throw err;
@@ -309,27 +346,27 @@ function account(accountKey, config) {
   return {
     /** Get account identity (verified email). */
     async whoami() {
-      return request("GET", "/api/agent/whoami");
+      return request('GET', '/api/agent/whoami');
     },
 
     /** Get account balance and linked services. */
     async balance() {
-      return request("GET", "/api/agent/balance");
+      return request('GET', '/api/agent/balance');
     },
 
     /** Get recent transactions. @param {number} [limit=20] */
     async transactions(limit) {
-      return request("GET", "/api/agent/transactions?limit=" + (limit || 20));
+      return request('GET', '/api/agent/transactions?limit=' + (limit || 20));
     },
 
     /** Link to a service using a pairing code. @param {string} code */
     async link(code) {
-      return request("POST", "/api/agent/link", { code: code });
+      return request('POST', '/api/agent/link', { code: code });
     },
 
     /** Unlink from a service. @param {string} domain */
     async unlink(domain) {
-      return request("DELETE", "/api/agent/link/" + encodeURIComponent(domain));
+      return request('DELETE', '/api/agent/link/' + encodeURIComponent(domain));
     },
 
     /**
@@ -338,7 +375,7 @@ function account(accountKey, config) {
      * @returns {Promise<{ code: string, redirect_uri: string, state: string }>}
      */
     async authorize(opts) {
-      return request("POST", "/api/agent/authorize", {
+      return request('POST', '/api/agent/authorize', {
         client_id: opts.clientId,
         redirect_uri: opts.redirectUri,
         state: opts.state,
@@ -353,12 +390,19 @@ function account(accountKey, config) {
  * @returns {string} HTML string
  */
 function button(opts) {
-  var href = (opts && opts.url) || "https://legendum.co.uk/account";
-  var label = (opts && opts.label) || "Buy Credits";
-  var target = (opts && opts.target) || "_blank";
-  return '<a href="' + href + '" target="' + target + '" style="display:inline-flex;align-items:center;gap:0.5rem;background:rgb(88,54,136);color:white;padding:0.6rem 1.2rem;border-radius:4px;text-decoration:none;font-size:1rem;font-family:system-ui,-apple-system,sans-serif;">'
-    + '<span style="display:inline-flex;align-items:center;justify-content:center;width:1.5em;height:1.5em;border-radius:50%;background:rgb(88,176,209);color:white;font-weight:bold;font-size:0.9em;">&#x2C60;</span>'
-    + label + '</a>';
+  var href = (opts && opts.url) || 'https://legendum.co.uk/account';
+  var label = (opts && opts.label) || 'Buy Credits';
+  var target = (opts && opts.target) || '_blank';
+  return (
+    '<a href="' +
+    href +
+    '" target="' +
+    target +
+    '" style="display:inline-flex;align-items:center;gap:0.5rem;background:rgb(88,54,136);color:white;padding:0.6rem 1.2rem;border-radius:4px;text-decoration:none;font-size:1rem;font-family:system-ui,-apple-system,sans-serif;">' +
+    '<span style="display:inline-flex;align-items:center;justify-content:center;width:1.5em;height:1.5em;border-radius:50%;background:rgb(88,176,209);color:white;font-weight:bold;font-size:0.9em;">&#x2C60;</span>' +
+    label +
+    '</a>'
+  );
 }
 
 /**
@@ -374,73 +418,115 @@ function button(opts) {
  * @returns {string} HTML string (include directly in page, not via innerHTML)
  */
 function linkWidget(opts) {
-  var mount = opts.mountAt ? opts.mountAt.replace(/\/+$/, "") : null;
-  var linkUrl = opts.linkUrl || (mount && mount + "/link");
-  var confirmUrl = opts.confirmUrl || (mount && mount + "/confirm");
-  var statusUrl = opts.statusUrl || (mount && mount + "/status") || null;
-  var legUrl = (opts.baseUrl || "https://legendum.co.uk").replace(/\/+$/, "");
-  var id = "lgw-" + Math.random().toString(36).slice(2, 8);
-  var buyBtn = button({ url: legUrl + "/account" });
+  var mount = opts.mountAt ? opts.mountAt.replace(/\/+$/, '') : null;
+  var linkUrl = opts.linkUrl || (mount && mount + '/link');
+  var confirmUrl = opts.confirmUrl || (mount && mount + '/confirm');
+  var statusUrl = opts.statusUrl || (mount && mount + '/status') || null;
+  var legUrl = (opts.baseUrl || 'https://legendum.co.uk').replace(/\/+$/, '');
+  var id = 'lgw-' + Math.random().toString(36).slice(2, 8);
+  var buyBtn = button({ url: legUrl + '/account' });
 
-  return '<div id="' + id + '"></div>'
-    + '<style>'
-    + '.' + id + '-btn{display:inline-block;background:rgb(88,54,136);color:white;padding:0.5rem 1rem;border-radius:4px;border:none;font-size:1rem;cursor:pointer;text-decoration:none;font-family:system-ui,-apple-system,sans-serif;}'
-    + '.' + id + '-btn:hover{background:rgb(68,34,116);}'
-    + '.' + id + '-ok{padding:0.75rem 1rem;background:rgba(88,176,209,0.1);border:1px solid rgba(88,176,209,0.4);border-radius:4px;margin-bottom:1rem;}'
-    + '.' + id + '-wait{padding:0.75rem 1rem;background:rgba(188,171,122,0.15);border:1px solid rgba(188,171,122,0.4);border-radius:4px;}'
-    + '.' + id + '-err{padding:0.75rem 1rem;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;}'
-    + '</style>'
-    + '<script>'
-    + '(function(){'
-    + 'var el=document.getElementById("' + id + '");'
-    + 'var L="' + legUrl + '";'
-    + 'function linked(bal){'
-    +   'el.innerHTML=\'' + buyBtn.replace(/'/g, "\\'") + '\';'
-    +   'if(typeof bal==="number"){'
-    +     'var a=el.querySelector("a");'
-    +     'if(a){var s=a.querySelector("span");if(s){s.style.borderRadius="999px";s.style.padding="0.15em 0.6em";s.style.width="auto";s.style.height="auto";s.textContent="\\u2C60 "+bal.toLocaleString();}}'
-    +   '}'
-    + '}'
-    + 'function unlinked(){'
-    +   'el.innerHTML=\'<button class="' + id + '-btn" id="' + id + '-sl"><span style="display:inline-flex;align-items:center;justify-content:center;width:1.5em;height:1.5em;border-radius:50%;background:rgb(88,176,209);color:white;font-weight:bold;font-size:0.9em;margin-right:0.5rem;">&#x2C60;</span>Pay with Legendum</button>\';'
-    +   'document.getElementById("' + id + '-sl").onclick=doLink;'
-    + '}'
-    + 'function doLink(){'
-    +   'fetch("' + linkUrl + '",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:"{}"})'
-    +   '.then(function(r){return r.json();})'
-    +   '.then(function(d){'
-    +     'if(d.ok&&d.code){'
-    +       'el.innerHTML=\'<p class="' + id + '-wait" id="' + id + '-ps">Opening Legendum to link your account…</p>\';'
-    +       'poll(d.request_id);'
-    +       'window.open(L+"/link?code="+encodeURIComponent(d.code),"_blank");'
-    +     '}else{alert(d.message||"Failed to start linking");}'
-    +   '}).catch(function(){alert("Connection error");});'
-    + '}'
-    + 'function poll(rid){'
-    +   'var iv=setInterval(function(){'
-    +     'fetch("' + confirmUrl + '",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({request_id:rid})})'
-    +     '.then(function(r){return r.json();})'
-    +     '.then(function(d){'
-    +       'if(d.ok&&d.status==="confirmed"){clearInterval(iv);'
-    +         (statusUrl
-              ? 'fetch("' + statusUrl + '",{credentials:"include"}).then(function(r){return r.ok?r.json():null;}).then(function(s){linked(s&&s.balance);}).catch(function(){linked();});'
-              : 'linked();')
-    +       '}'
-    +       'else if(d.ok&&d.status==="expired"){'
-    +         'clearInterval(iv);'
-    +         'var ps=document.getElementById("' + id + '-ps");'
-    +         'if(ps){ps.className="' + id + '-err";ps.textContent="Code expired. Please try again.";}'
-    +         'setTimeout(unlinked,3000);'
-    +       '}'
-    +     '}).catch(function(){});'
-    +   '},3000);'
-    +   'setTimeout(function(){clearInterval(iv);},600000);'
-    + '}'
-    + (statusUrl
-      ? 'fetch("' + statusUrl + '",{credentials:"include"}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&d.legendum_linked)linked(d.balance);else unlinked();}).catch(function(){unlinked();});'
-      : 'unlinked();')
-    + '})();'
-    + '</script>';
+  return (
+    '<div id="' +
+    id +
+    '"></div>' +
+    '<style>' +
+    '.' +
+    id +
+    '-btn{display:inline-block;background:rgb(88,54,136);color:white;padding:0.5rem 1rem;border-radius:4px;border:none;font-size:1rem;cursor:pointer;text-decoration:none;font-family:system-ui,-apple-system,sans-serif;}' +
+    '.' +
+    id +
+    '-btn:hover{background:rgb(68,34,116);}' +
+    '.' +
+    id +
+    '-ok{padding:0.75rem 1rem;background:rgba(88,176,209,0.1);border:1px solid rgba(88,176,209,0.4);border-radius:4px;margin-bottom:1rem;}' +
+    '.' +
+    id +
+    '-wait{padding:0.75rem 1rem;background:rgba(188,171,122,0.15);border:1px solid rgba(188,171,122,0.4);border-radius:4px;}' +
+    '.' +
+    id +
+    '-err{padding:0.75rem 1rem;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;}' +
+    '</style>' +
+    '<script>' +
+    '(function(){' +
+    'var el=document.getElementById("' +
+    id +
+    '");' +
+    'var L="' +
+    legUrl +
+    '";' +
+    'function linked(bal){' +
+    "el.innerHTML='" +
+    buyBtn.replace(/'/g, "\\'") +
+    "';" +
+    'if(typeof bal==="number"){' +
+    'var a=el.querySelector("a");' +
+    'if(a){var s=a.querySelector("span");if(s){s.style.borderRadius="999px";s.style.padding="0.15em 0.6em";s.style.width="auto";s.style.height="auto";s.textContent="\\u2C60 "+bal.toLocaleString();}}' +
+    '}' +
+    '}' +
+    'function unlinked(){' +
+    'el.innerHTML=\'<button class="' +
+    id +
+    '-btn" id="' +
+    id +
+    '-sl"><span style="display:inline-flex;align-items:center;justify-content:center;width:1.5em;height:1.5em;border-radius:50%;background:rgb(88,176,209);color:white;font-weight:bold;font-size:0.9em;margin-right:0.5rem;">&#x2C60;</span>Pay with Legendum</button>\';' +
+    'document.getElementById("' +
+    id +
+    '-sl").onclick=doLink;' +
+    '}' +
+    'function doLink(){' +
+    'fetch("' +
+    linkUrl +
+    '",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:"{}"})' +
+    '.then(function(r){return r.json();})' +
+    '.then(function(d){' +
+    'if(d.ok&&d.code){' +
+    'el.innerHTML=\'<p class="' +
+    id +
+    '-wait" id="' +
+    id +
+    '-ps">Opening Legendum to link your account…</p>\';' +
+    'poll(d.request_id);' +
+    'window.open(L+"/link?code="+encodeURIComponent(d.code),"_blank");' +
+    '}else{alert(d.message||"Failed to start linking");}' +
+    '}).catch(function(){alert("Connection error");});' +
+    '}' +
+    'function poll(rid){' +
+    'var iv=setInterval(function(){' +
+    'fetch("' +
+    confirmUrl +
+    '",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({request_id:rid})})' +
+    '.then(function(r){return r.json();})' +
+    '.then(function(d){' +
+    'if(d.ok&&d.status==="confirmed"){clearInterval(iv);' +
+    (statusUrl
+      ? 'fetch("' +
+        statusUrl +
+        '",{credentials:"include"}).then(function(r){return r.ok?r.json():null;}).then(function(s){linked(s&&s.balance);}).catch(function(){linked();});'
+      : 'linked();') +
+    '}' +
+    'else if(d.ok&&d.status==="expired"){' +
+    'clearInterval(iv);' +
+    'var ps=document.getElementById("' +
+    id +
+    '-ps");' +
+    'if(ps){ps.className="' +
+    id +
+    '-err";ps.textContent="Code expired. Please try again.";}' +
+    'setTimeout(unlinked,3000);' +
+    '}' +
+    '}).catch(function(){});' +
+    '},3000);' +
+    'setTimeout(function(){clearInterval(iv);},600000);' +
+    '}' +
+    (statusUrl
+      ? 'fetch("' +
+        statusUrl +
+        '",{credentials:"include"}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&d.legendum_linked)linked(d.balance);else unlinked();}).catch(function(){unlinked();});'
+      : 'unlinked();') +
+    '})();' +
+    '</script>'
+  );
 }
 
 /**
@@ -487,59 +573,97 @@ function linkWidget(opts) {
  *   const ctrl2 = legendum.linkController({ mountAt: "/legendum", onChange: setState, client: legendum.create({ apiKey, secret }), redirectUri, state });
  */
 function linkController(opts) {
-  var mount = opts.mountAt ? opts.mountAt.replace(/\/+$/, "") : null;
-  var linkUrl = opts.linkUrl || (mount && mount + "/link");
+  var mount = opts.mountAt ? opts.mountAt.replace(/\/+$/, '') : null;
+  var linkUrl = opts.linkUrl || (mount && mount + '/link');
   /** Default POST …/auth-link when mountAt is set; set to `null` to use opts.client + POST …/link + authAndLinkUrl in the browser instead. */
-  var authLinkUrl = opts.authLinkUrl !== undefined ? opts.authLinkUrl : mount && mount + "/auth-link";
-  var confirmUrl = opts.confirmUrl || (mount && mount + "/confirm");
-  var statusUrl = opts.statusUrl || (mount && mount + "/status") || null;
-  var legUrl = (opts.baseUrl || "https://legendum.co.uk").replace(/\/+$/, "");
+  var authLinkUrl =
+    opts.authLinkUrl !== undefined
+      ? opts.authLinkUrl
+      : mount && mount + '/auth-link';
+  var confirmUrl = opts.confirmUrl || (mount && mount + '/confirm');
+  var statusUrl = opts.statusUrl || (mount && mount + '/status') || null;
+  var legUrl = (opts.baseUrl || 'https://legendum.co.uk').replace(/\/+$/, '');
   var sdkClient = opts.client;
-  var onChange = opts.onChange || function () {};
+  var onChange = opts.onChange || (() => {});
   var pollTimer = null;
   var pollTimeout = null;
   var destroyed = false;
 
-  var state = { status: "loading", balance: null, error: null };
+  var state = { status: 'loading', balance: null, error: null };
 
   function setState(patch) {
     for (var k in patch) state[k] = patch[k];
-    if (!destroyed) onChange({ status: state.status, balance: state.balance, error: state.error });
+    if (!destroyed)
+      onChange({
+        status: state.status,
+        balance: state.balance,
+        error: state.error,
+      });
   }
 
   function stopPolling() {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-    if (pollTimeout) { clearTimeout(pollTimeout); pollTimeout = null; }
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    if (pollTimeout) {
+      clearTimeout(pollTimeout);
+      pollTimeout = null;
+    }
   }
 
   function checkStatus() {
-    if (!statusUrl) { setState({ status: "unlinked" }); return; }
-    fetch(statusUrl, { credentials: "include" })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) {
-        if (d && d.legendum_linked) setState({ status: "linked", balance: typeof d.balance === "number" ? d.balance : null });
-        else setState({ status: "unlinked", balance: null });
+    if (!statusUrl) {
+      setState({ status: 'unlinked' });
+      return;
+    }
+    fetch(statusUrl, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && d.legendum_linked)
+          setState({
+            status: 'linked',
+            balance: typeof d.balance === 'number' ? d.balance : null,
+          });
+        else setState({ status: 'unlinked', balance: null });
       })
-      .catch(function () { setState({ status: "unlinked", balance: null }); });
+      .catch(() => {
+        setState({ status: 'unlinked', balance: null });
+      });
   }
 
   function startLink() {
-    if (state.status === "linking") return;
-    setState({ status: "linking", error: null });
-    fetch(linkUrl, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
+    if (state.status === 'linking') return;
+    setState({ status: 'linking', error: null });
+    fetch(linkUrl, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+      .then((r) => r.json())
+      .then((d) => {
         if (d.ok && d.code) {
-          window.open(legUrl + "/link?code=" + encodeURIComponent(d.code), "_blank");
+          window.open(
+            legUrl + '/link?code=' + encodeURIComponent(d.code),
+            '_blank'
+          );
           poll(d.request_id);
         } else {
-          setState({ status: "error", error: d.message || "Failed to start linking" });
-          setTimeout(function () { if (!destroyed) setState({ status: "unlinked" }); }, 3000);
+          setState({
+            status: 'error',
+            error: d.message || 'Failed to start linking',
+          });
+          setTimeout(() => {
+            if (!destroyed) setState({ status: 'unlinked' });
+          }, 3000);
         }
       })
-      .catch(function () {
-        setState({ status: "error", error: "Connection error" });
-        setTimeout(function () { if (!destroyed) setState({ status: "unlinked" }); }, 3000);
+      .catch(() => {
+        setState({ status: 'error', error: 'Connection error' });
+        setTimeout(() => {
+          if (!destroyed) setState({ status: 'unlinked' });
+        }, 3000);
       });
   }
 
@@ -549,51 +673,72 @@ function linkController(opts) {
    * @param {string} [csrfState] - Overrides opts.state for this call (e.g. fresh token per click)
    */
   function startAuthAndLink(csrfState) {
-    if (state.status === "linking") return;
+    if (state.status === 'linking') return;
     var redirectUri = opts.redirectUri;
     var csrf = csrfState !== undefined ? csrfState : opts.state;
     if (!redirectUri) {
-      throw new Error("Legendum SDK: linkController startAuthAndLink requires opts.redirectUri");
+      throw new Error(
+        'Legendum SDK: linkController startAuthAndLink requires opts.redirectUri'
+      );
     }
     if (csrf === undefined || csrf === null) {
-      throw new Error("Legendum SDK: linkController startAuthAndLink requires opts.state or startAuthAndLink(state)");
+      throw new Error(
+        'Legendum SDK: linkController startAuthAndLink requires opts.state or startAuthAndLink(state)'
+      );
     }
-    setState({ status: "linking", error: null });
+    setState({ status: 'linking', error: null });
 
     if (authLinkUrl) {
       fetch(authLinkUrl, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ redirect_uri: redirectUri, state: String(csrf) }),
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uri: redirectUri,
+          state: String(csrf),
+        }),
       })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
+        .then((r) => r.json())
+        .then((d) => {
           if (d.ok && d.url) {
             window.location.assign(d.url);
           } else {
-            setState({ status: "error", error: d.message || "Failed to start login and link" });
-            setTimeout(function () { if (!destroyed) setState({ status: "unlinked" }); }, 3000);
+            setState({
+              status: 'error',
+              error: d.message || 'Failed to start login and link',
+            });
+            setTimeout(() => {
+              if (!destroyed) setState({ status: 'unlinked' });
+            }, 3000);
           }
         })
-        .catch(function () {
-          setState({ status: "error", error: "Connection error" });
-          setTimeout(function () { if (!destroyed) setState({ status: "unlinked" }); }, 3000);
+        .catch(() => {
+          setState({ status: 'error', error: 'Connection error' });
+          setTimeout(() => {
+            if (!destroyed) setState({ status: 'unlinked' });
+          }, 3000);
         });
       return;
     }
 
-    if (!sdkClient || typeof sdkClient.authAndLinkUrl !== "function") {
+    if (!sdkClient || typeof sdkClient.authAndLinkUrl !== 'function') {
       throw new Error(
-        "Legendum SDK: linkController startAuthAndLink requires opts.authLinkUrl / mountAt (middleware), or opts.client from legendum.create()"
+        'Legendum SDK: linkController startAuthAndLink requires opts.authLinkUrl / mountAt (middleware), or opts.client from legendum.create()'
       );
     }
     if (!linkUrl) {
-      throw new Error("Legendum SDK: linkController startAuthAndLink requires linkUrl or mountAt when using opts.client");
+      throw new Error(
+        'Legendum SDK: linkController startAuthAndLink requires linkUrl or mountAt when using opts.client'
+      );
     }
-    fetch(linkUrl, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
+    fetch(linkUrl, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+      .then((r) => r.json())
+      .then((d) => {
         if (d.ok && d.code) {
           var url = sdkClient.authAndLinkUrl({
             redirectUri: redirectUri,
@@ -602,45 +747,75 @@ function linkController(opts) {
           });
           window.location.assign(url);
         } else {
-          setState({ status: "error", error: d.message || "Failed to start linking" });
-          setTimeout(function () { if (!destroyed) setState({ status: "unlinked" }); }, 3000);
+          setState({
+            status: 'error',
+            error: d.message || 'Failed to start linking',
+          });
+          setTimeout(() => {
+            if (!destroyed) setState({ status: 'unlinked' });
+          }, 3000);
         }
       })
-      .catch(function () {
-        setState({ status: "error", error: "Connection error" });
-        setTimeout(function () { if (!destroyed) setState({ status: "unlinked" }); }, 3000);
+      .catch(() => {
+        setState({ status: 'error', error: 'Connection error' });
+        setTimeout(() => {
+          if (!destroyed) setState({ status: 'unlinked' });
+        }, 3000);
       });
   }
 
   function poll(requestId) {
     stopPolling();
-    pollTimer = setInterval(function () {
-      if (destroyed) { stopPolling(); return; }
-      fetch(confirmUrl, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request_id: requestId }) })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          if (d.ok && d.status === "confirmed") {
+    pollTimer = setInterval(() => {
+      if (destroyed) {
+        stopPolling();
+        return;
+      }
+      fetch(confirmUrl, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: requestId }),
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.ok && d.status === 'confirmed') {
             stopPolling();
             checkStatus();
-          } else if (d.ok && d.status === "expired") {
+          } else if (d.ok && d.status === 'expired') {
             stopPolling();
-            setState({ status: "error", error: "Code expired. Please try again." });
-            setTimeout(function () { if (!destroyed) setState({ status: "unlinked" }); }, 3000);
+            setState({
+              status: 'error',
+              error: 'Code expired. Please try again.',
+            });
+            setTimeout(() => {
+              if (!destroyed) setState({ status: 'unlinked' });
+            }, 3000);
           }
         })
-        .catch(function () {});
+        .catch(() => {});
     }, 3000);
-    pollTimeout = setTimeout(function () { stopPolling(); if (!destroyed) setState({ status: "unlinked" }); }, 600000);
+    pollTimeout = setTimeout(() => {
+      stopPolling();
+      if (!destroyed) setState({ status: 'unlinked' });
+    }, 600000);
   }
 
   return {
-    getState: function () { return { status: state.status, balance: state.balance, error: state.error }; },
+    getState: () => ({
+      status: state.status,
+      balance: state.balance,
+      error: state.error,
+    }),
     checkStatus: checkStatus,
     startLink: startLink,
     startAuthAndLink: startAuthAndLink,
     /** URL for the buy credits / account page */
-    accountUrl: legUrl + "/account",
-    destroy: function () { destroyed = true; stopPolling(); }
+    accountUrl: legUrl + '/account',
+    destroy: () => {
+      destroyed = true;
+      stopPolling();
+    },
   };
 }
 
@@ -667,10 +842,10 @@ function linkController(opts) {
  *   // Automatically sets linkUrl, confirmUrl, statusUrl
  */
 function middleware(opts) {
-  var prefix = (opts.prefix || "/legendum").replace(/\/+$/, "");
+  var prefix = (opts.prefix || '/legendum').replace(/\/+$/, '');
   var getToken = opts.getToken;
   var setToken = opts.setToken;
-  var clearToken = opts.clearToken || async function () {};
+  var clearToken = opts.clearToken || (async () => {});
   var client = opts.client || null;
 
   function getClient() {
@@ -681,7 +856,7 @@ function middleware(opts) {
   function jsonResponse(data, status) {
     return new Response(JSON.stringify(data), {
       status: status || 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 
@@ -690,28 +865,35 @@ function middleware(opts) {
     var url = new URL(request.url);
     var path = url.pathname;
 
-    if (!path.startsWith(prefix + "/") && path !== prefix) return null;
+    if (!path.startsWith(prefix + '/') && path !== prefix) return null;
     var route = path.slice(prefix.length);
 
     // POST /link
-    if (route === "/link" && request.method === "POST") {
+    if (route === '/link' && request.method === 'POST') {
       try {
         var c = getClient();
         var data = await c.requestLink();
-        return jsonResponse({ ok: true, code: data.code, request_id: data.request_id });
+        return jsonResponse({
+          ok: true,
+          code: data.code,
+          request_id: data.request_id,
+        });
       } catch (err) {
         return jsonResponse({ ok: false, message: err.message }, 500);
       }
     }
 
     // POST /auth-link — pairing code + authorize URL for login-and-link (server holds API secret)
-    if (route === "/auth-link" && request.method === "POST") {
+    if (route === '/auth-link' && request.method === 'POST') {
       try {
         var body = await request.json();
         var redirectUri = body.redirect_uri || body.redirectUri;
         var st = body.state;
         if (!redirectUri || st === undefined || st === null) {
-          return jsonResponse({ ok: false, message: "redirect_uri and state are required" }, 400);
+          return jsonResponse(
+            { ok: false, message: 'redirect_uri and state are required' },
+            400
+          );
         }
         var c2 = getClient();
         var linkData = await c2.requestLink();
@@ -720,31 +902,45 @@ function middleware(opts) {
           state: String(st),
           linkCode: linkData.code,
         });
-        return jsonResponse({ ok: true, url: authUrl, request_id: linkData.request_id });
+        return jsonResponse({
+          ok: true,
+          url: authUrl,
+          request_id: linkData.request_id,
+        });
       } catch (err) {
         return jsonResponse({ ok: false, message: err.message }, 500);
       }
     }
 
     // POST /confirm
-    if (route === "/confirm" && request.method === "POST") {
+    if (route === '/confirm' && request.method === 'POST') {
       try {
         var body = await request.json();
-        if (!body.request_id) return jsonResponse({ ok: false, message: "request_id is required" }, 400);
+        if (!body.request_id)
+          return jsonResponse(
+            { ok: false, message: 'request_id is required' },
+            400
+          );
         var c = getClient();
         var data = await c.pollLink(body.request_id);
-        if (data.status === "confirmed" && data.account_token) {
-          await setToken.apply(null, [request, data.account_token].concat(extra));
-          return jsonResponse({ ok: true, status: "confirmed" });
+        if (data.status === 'confirmed' && data.account_token) {
+          await setToken.apply(
+            null,
+            [request, data.account_token].concat(extra)
+          );
+          return jsonResponse({ ok: true, status: 'confirmed' });
         }
         return jsonResponse({ ok: true, status: data.status });
       } catch (err) {
-        return jsonResponse({ ok: false, message: err.message }, err.status || 500);
+        return jsonResponse(
+          { ok: false, message: err.message },
+          err.status || 500
+        );
       }
     }
 
     // GET /status
-    if (route === "/status" && request.method === "GET") {
+    if (route === '/status' && request.method === 'GET') {
       var token = await getToken.apply(null, [request].concat(extra));
       if (!token) return jsonResponse({ legendum_linked: false });
       try {
@@ -752,7 +948,7 @@ function middleware(opts) {
         var data = await c.balance(token);
         return jsonResponse({ legendum_linked: true, balance: data.balance });
       } catch (err) {
-        if (err.code === "token_not_found") {
+        if (err.code === 'token_not_found') {
           try {
             await clearToken.apply(null, [request].concat(extra));
           } catch (_e) {
@@ -807,11 +1003,15 @@ function client(client) {
     authAndLinkUrl: c.authAndLinkUrl.bind(c),
     exchangeCode: wrap(c.exchangeCode),
     linkAccount: wrap(c.linkAccount),
-    tab: wrapSync(function (accountToken, description, opts) {
-      return typeof c.tab === "function"
+    tab: wrapSync((accountToken, description, opts) =>
+      typeof c.tab === 'function'
         ? c.tab(accountToken, description, opts)
-        : tab(accountToken, description, Object.assign({}, opts || {}, { client: c }));
-    }),
+        : tab(
+            accountToken,
+            description,
+            Object.assign({}, opts || {}, { client: c })
+          )
+    ),
   };
 }
 
@@ -833,8 +1033,10 @@ function client(client) {
  *   await tab.close(); // flush remainder
  */
 function tab(accountToken, description, opts) {
-  if (!opts || typeof opts.threshold !== "number" || opts.threshold <= 0) {
-    throw new Error("Legendum SDK: tab() requires opts.threshold (positive number)");
+  if (!opts || typeof opts.threshold !== 'number' || opts.threshold <= 0) {
+    throw new Error(
+      'Legendum SDK: tab() requires opts.threshold (positive number)'
+    );
   }
   var threshold = opts.threshold;
   var defaultAmount = (opts && opts.amount) || 1;
@@ -852,7 +1054,9 @@ function tab(accountToken, description, opts) {
 
   return {
     /** Current unflushed total. */
-    get total() { return total; },
+    get total() {
+      return total;
+    },
 
     /**
      * Add to the running total. Flushes automatically when threshold is reached.
@@ -860,10 +1064,12 @@ function tab(accountToken, description, opts) {
      * @returns {Promise<void>} Resolves after flush if one was triggered
      */
     async add(amount) {
-      if (closed) throw new Error("Legendum SDK: tab is closed");
-      total += (amount !== undefined ? amount : defaultAmount);
+      if (closed) throw new Error('Legendum SDK: tab is closed');
+      total += amount !== undefined ? amount : defaultAmount;
       if (total >= threshold && !flushing) {
-        flushing = flush().finally(function() { flushing = null; });
+        flushing = flush().finally(() => {
+          flushing = null;
+        });
         await flushing;
       }
     },
@@ -912,25 +1118,50 @@ function getDefault() {
 function mockSdk(handlers) {
   var h = handlers || {};
   var m = {
-    charge: h.charge || async function () { return { email: "mock@test.com", transaction_id: 1, balance: 0 }; },
-    balance: h.balance || async function () { return { balance: 0, held: 0 }; },
-    reserve: h.reserve || async function (_t, amount) {
-      return { id: 1, amount: amount, settle: async function () {}, release: async function () {} };
-    },
-    requestLink: h.requestLink || async function () { return { code: "MOCK", request_id: "mock_req" }; },
-    pollLink: h.pollLink || async function () { return { status: "pending" }; },
-    waitForLink: h.waitForLink || async function () { return { account_token: "mock_token" }; },
-    authUrl: h.authUrl || function (opts) { return "http://mock.legendum.test/auth/authorize?state=" + (opts && opts.state || ""); },
-    authAndLinkUrl: h.authAndLinkUrl || function (opts) {
-      return "http://mock.legendum.test/auth/authorize?state=" + (opts && opts.state || "")
-        + "&intent=login_link&link_code=" + encodeURIComponent((opts && opts.linkCode) || "");
-    },
-    exchangeCode: h.exchangeCode || async function () { return { email: "mock@test.com", linked: false }; },
-    linkAccount: h.linkAccount || async function () { return { token: "mock_legendum_token", email: "mock@test.com" }; },
+    charge:
+      h.charge ||
+      (async () => ({ email: 'mock@test.com', transaction_id: 1, balance: 0 })),
+    balance: h.balance || (async () => ({ balance: 0, held: 0 })),
+    reserve:
+      h.reserve ||
+      (async (_t, amount) => ({
+        id: 1,
+        amount: amount,
+        settle: async () => {},
+        release: async () => {},
+      })),
+    requestLink:
+      h.requestLink || (async () => ({ code: 'MOCK', request_id: 'mock_req' })),
+    pollLink: h.pollLink || (async () => ({ status: 'pending' })),
+    waitForLink:
+      h.waitForLink || (async () => ({ account_token: 'mock_token' })),
+    authUrl:
+      h.authUrl ||
+      ((opts) =>
+        'http://mock.legendum.test/auth/authorize?state=' +
+        ((opts && opts.state) || '')),
+    authAndLinkUrl:
+      h.authAndLinkUrl ||
+      ((opts) =>
+        'http://mock.legendum.test/auth/authorize?state=' +
+        ((opts && opts.state) || '') +
+        '&intent=login_link&link_code=' +
+        encodeURIComponent((opts && opts.linkCode) || '')),
+    exchangeCode:
+      h.exchangeCode ||
+      (async () => ({ email: 'mock@test.com', linked: false })),
+    linkAccount:
+      h.linkAccount ||
+      (async () => ({ token: 'mock_legendum_token', email: 'mock@test.com' })),
   };
-  m.tab = h.tab || function (accountToken, description, opts) {
-    return tab(accountToken, description, Object.assign({}, opts || {}, { client: m }));
-  };
+  m.tab =
+    h.tab ||
+    ((accountToken, description, opts) =>
+      tab(
+        accountToken,
+        description,
+        Object.assign({}, opts || {}, { client: m })
+      ));
   _mockClient = m;
 }
 
@@ -946,23 +1177,47 @@ module.exports = {
   service: create,
   account: account,
   client: client,
-  isConfigured: function () { if (_mockClient) return true; try { getDefault(); return true; } catch (e) { return false; } },
-  charge: function () { return getDefault().charge.apply(getDefault(), arguments); },
-  balance: function () { return getDefault().balance.apply(getDefault(), arguments); },
-  reserve: function () { return getDefault().reserve.apply(getDefault(), arguments); },
-  requestLink: function () { return getDefault().requestLink.apply(getDefault(), arguments); },
-  pollLink: function () { return getDefault().pollLink.apply(getDefault(), arguments); },
-  waitForLink: function () { return getDefault().waitForLink.apply(getDefault(), arguments); },
+  isConfigured: () => {
+    if (_mockClient) return true;
+    try {
+      getDefault();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+  charge: function () {
+    return getDefault().charge.apply(getDefault(), arguments);
+  },
+  balance: function () {
+    return getDefault().balance.apply(getDefault(), arguments);
+  },
+  reserve: function () {
+    return getDefault().reserve.apply(getDefault(), arguments);
+  },
+  requestLink: function () {
+    return getDefault().requestLink.apply(getDefault(), arguments);
+  },
+  pollLink: function () {
+    return getDefault().pollLink.apply(getDefault(), arguments);
+  },
+  waitForLink: function () {
+    return getDefault().waitForLink.apply(getDefault(), arguments);
+  },
   tab: tab,
-  authUrl: function (opts) { return getDefault().authUrl(opts); },
-  authAndLinkUrl: function (opts) { return getDefault().authAndLinkUrl(opts); },
-  exchangeCode: function () { return getDefault().exchangeCode.apply(getDefault(), arguments); },
-  linkAccount: function () { return getDefault().linkAccount.apply(getDefault(), arguments); },
+  authUrl: (opts) => getDefault().authUrl(opts),
+  authAndLinkUrl: (opts) => getDefault().authAndLinkUrl(opts),
+  exchangeCode: function () {
+    return getDefault().exchangeCode.apply(getDefault(), arguments);
+  },
+  linkAccount: function () {
+    return getDefault().linkAccount.apply(getDefault(), arguments);
+  },
   button: button,
   linkWidget: linkWidget,
   linkController: linkController,
   middleware: middleware,
   mock: mockSdk,
   unmock: unmockSdk,
-  version: "1.0.0",
+  version: '1.0.0',
 };

@@ -1,8 +1,8 @@
-import { Database } from "bun:sqlite";
-import { chunkText, type Chunk } from "./chunking";
-import { embed, serializeEmbedding } from "./rag";
+import type { Database } from 'bun:sqlite';
+import { type Chunk, chunkText } from './chunking';
+import { embed, serializeEmbedding } from './rag';
 
-type ChunkTable = "wiki_chunks";
+type ChunkTable = 'wiki_chunks';
 
 /**
  * Index a file into a chunk table (source or wiki).
@@ -21,7 +21,10 @@ export async function indexFile(
   if (chunks.length === 0) return 0;
 
   // Delete existing chunks for this file
-  db.prepare(`DELETE FROM ${table} WHERE wiki_id = ? AND path = ?`).run(wikiId, path);
+  db.prepare(`DELETE FROM ${table} WHERE wiki_id = ? AND path = ?`).run(
+    wikiId,
+    path
+  );
 
   // Insert new chunks
   const insert = db.prepare(
@@ -67,7 +70,12 @@ async function storeEmbeddings(
 
   const updateMany = db.transaction(() => {
     for (let i = 0; i < chunks.length; i++) {
-      update.run(serializeEmbedding(embeddings[i]), wikiId, path, chunks[i].chunkIndex);
+      update.run(
+        serializeEmbedding(embeddings[i]),
+        wikiId,
+        path,
+        chunks[i].chunkIndex
+      );
     }
   });
 
@@ -100,5 +108,8 @@ export function removeFile(
   table: ChunkTable,
   path: string
 ): void {
-  db.prepare(`DELETE FROM ${table} WHERE wiki_id = ? AND path = ?`).run(wikiId, path);
+  db.prepare(`DELETE FROM ${table} WHERE wiki_id = ? AND path = ?`).run(
+    wikiId,
+    path
+  );
 }

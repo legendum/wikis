@@ -1,5 +1,5 @@
-import { getGlobalDb } from "./db";
-import { createHash } from "crypto";
+import { createHash } from 'crypto';
+import { getGlobalDb } from './db';
 
 interface AccountKeyUser {
   id: number;
@@ -15,9 +15,9 @@ interface AccountKeyUser {
  * For self-hosted, we store a hashed key locally.
  */
 export function validateAccountKey(key: string): AccountKeyUser | null {
-  if (!key || !key.startsWith("lak_")) return null;
+  if (!key || !key.startsWith('lak_')) return null;
 
-  const hash = createHash("sha256").update(key).digest("hex");
+  const hash = createHash('sha256').update(key).digest('hex');
   const db = getGlobalDb();
 
   // Check local key store
@@ -36,7 +36,9 @@ export function validateAccountKey(key: string): AccountKeyUser | null {
 /**
  * Extract bearer token from Authorization header.
  */
-export function extractBearerToken(header: string | null | undefined): string | null {
+export function extractBearerToken(
+  header: string | null | undefined
+): string | null {
   if (!header) return null;
   const match = header.match(/^Bearer\s+(.+)$/i);
   return match ? match[1] : null;
@@ -45,8 +47,12 @@ export function extractBearerToken(header: string | null | undefined): string | 
 /**
  * Store an account key for a user (self-hosted mode).
  */
-export function storeAccountKey(userId: number, key: string, label = "default"): void {
-  const hash = createHash("sha256").update(key).digest("hex");
+export function storeAccountKey(
+  userId: number,
+  key: string,
+  label = 'default'
+): void {
+  const hash = createHash('sha256').update(key).digest('hex');
   const prefix = key.slice(0, 12);
   const db = getGlobalDb();
 

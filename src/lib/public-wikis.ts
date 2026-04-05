@@ -5,46 +5,45 @@
  * shared and world-readable). They serve as SEO landing pages and
  * showcase what wikis.fyi can do.
  */
-import { Database } from "bun:sqlite";
-import { $ } from "bun";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "fs";
-import { resolve, relative, extname } from "path";
-import { Glob } from "bun";
-import { getPublicDb } from "./db";
-import { runAgent, type WikiConfig } from "./agent";
-import { DATA_DIR } from "./constants";
-import { log } from "./log";
+import { Database } from 'bun:sqlite';
+import { $, Glob } from 'bun';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'fs';
+import { extname, relative, resolve } from 'path';
+import { runAgent, type WikiConfig } from './agent';
+import { DATA_DIR } from './constants';
+import { getPublicDb } from './db';
+import { log } from './log';
 
-const REPOS_DIR = resolve(DATA_DIR, "repos");
+const REPOS_DIR = resolve(DATA_DIR, 'repos');
 
 /** Default source globs for public repos. */
 const DEFAULT_SOURCES = [
-  "src/**/*.ts",
-  "src/**/*.js",
-  "lib/**/*.ts",
-  "lib/**/*.js",
-  "docs/**/*.md",
-  "config/**/*.yml",
-  "config/**/*.yaml",
-  "README.md",
-  "CLAUDE.md",
+  'src/**/*.ts',
+  'src/**/*.js',
+  'lib/**/*.ts',
+  'lib/**/*.js',
+  'docs/**/*.md',
+  'config/**/*.yml',
+  'config/**/*.yaml',
+  'README.md',
+  'CLAUDE.md',
 ];
 
 const DEFAULT_EXCLUDE = [
-  "node_modules/**",
-  "dist/**",
-  ".git/**",
-  "*.db",
-  "*.lock",
-  "bun.lock",
+  'node_modules/**',
+  'dist/**',
+  '.git/**',
+  '*.db',
+  '*.lock',
+  'bun.lock',
 ];
 
 /** Default sections — empty means the LLM will plan them. */
 const DEFAULT_SECTIONS: { name: string; description: string }[] = [];
 
 export interface PublicWikiDef {
-  repo: string;        // e.g. "https://github.com/legendum/depends.git"
-  name: string;        // e.g. "depends"
+  repo: string; // e.g. "https://github.com/legendum/depends.git"
+  name: string; // e.g. "depends"
   sections?: { name: string; description: string }[];
   sources?: string[];
 }
@@ -52,13 +51,16 @@ export interface PublicWikiDef {
 /**
  * Clone or pull a repo, index sources, run the agent.
  */
-export async function buildPublicWiki(def: PublicWikiDef, opts: { force?: boolean } = {}): Promise<void> {
+export async function buildPublicWiki(
+  def: PublicWikiDef,
+  opts: { force?: boolean } = {}
+): Promise<void> {
   const db = getPublicDb();
   const repoDir = resolve(REPOS_DIR, def.name);
 
   // Clone or pull
   mkdirSync(REPOS_DIR, { recursive: true });
-  if (existsSync(resolve(repoDir, ".git"))) {
+  if (existsSync(resolve(repoDir, '.git'))) {
     log.info(`Pulling ${def.name}`, { repo: def.repo });
     await $`cd ${repoDir} && git pull --ff-only`.quiet();
   } else {
@@ -67,10 +69,16 @@ export async function buildPublicWiki(def: PublicWikiDef, opts: { force?: boolea
   }
 
   // Ensure wiki exists in public DB
-  let wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(def.name) as { id: number } | null;
+  let wiki = db
+    .prepare('SELECT id FROM wikis WHERE name = ?')
+    .get(def.name) as { id: number } | null;
   if (!wiki) {
-    db.prepare("INSERT INTO wikis (name, visibility) VALUES (?, 'public')").run(def.name);
-    wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(def.name) as { id: number };
+    db.prepare("INSERT INTO wikis (name, visibility) VALUES (?, 'public')").run(
+      def.name
+    );
+    wiki = db.prepare('SELECT id FROM wikis WHERE name = ?').get(def.name) as {
+      id: number;
+    };
   }
 
   // Collect source files
@@ -80,14 +88,14 @@ export async function buildPublicWiki(def: PublicWikiDef, opts: { force?: boolea
   log.info(`Collected ${files.length} source files for ${def.name}`);
 
   // Store source files — only update modified_at when content actually changed
-  const hashContent = (await import("./storage")).hashContent;
+  const hashContent = (await import('./storage')).hashContent;
   const now = new Date().toISOString();
   let changed = 0;
   for (const file of files) {
     const hash = hashContent(file.content);
-    const existing = db.prepare(
-      "SELECT hash FROM source_files WHERE wiki_id = ? AND path = ?"
-    ).get(wiki.id, file.path) as { hash: string } | null;
+    const existing = db
+      .prepare('SELECT hash FROM source_files WHERE wiki_id = ? AND path = ?')
+      .get(wiki.id, file.path) as { hash: string } | null;
 
     if (existing?.hash === hash) continue; // unchanged, skip
 
@@ -101,7 +109,9 @@ export async function buildPublicWiki(def: PublicWikiDef, opts: { force?: boolea
     `).run(wiki.id, file.path, file.content, hash, now);
     changed++;
   }
-  log.info(`Stored ${files.length} source files for ${def.name} (${changed} changed)`);
+  log.info(
+    `Stored ${files.length} source files for ${def.name} (${changed} changed)`
+  );
 
   // Run the wiki agent
   const config: WikiConfig = {
@@ -109,8 +119,11 @@ export async function buildPublicWiki(def: PublicWikiDef, opts: { force?: boolea
     sections: def.sections || DEFAULT_SECTIONS,
   };
 
-  log.info(`Running agent for ${def.name}${opts.force ? " (force)" : ""}`);
-  const result = await runAgent(db, wiki.id, config, { reason: "public wiki build", force: opts.force });
+  log.info(`Running agent for ${def.name}${opts.force ? ' (force)' : ''}`);
+  const result = await runAgent(db, wiki.id, config, {
+    reason: 'public wiki build',
+    force: opts.force,
+  });
   log.info(`Agent complete for ${def.name}`, {
     created: result.pagesCreated.length,
     updated: result.pagesUpdated.length,
@@ -140,7 +153,7 @@ function collectFiles(
         const stat = statSync(fullPath);
         if (!stat.isFile() || stat.size > 512_000) continue; // skip files > 500KB
 
-        const content = readFileSync(fullPath, "utf8");
+        const content = readFileSync(fullPath, 'utf8');
         files.push({ path: match, content });
         seen.add(match);
       } catch {
@@ -155,12 +168,17 @@ function collectFiles(
 /**
  * Build all configured public wikis.
  */
-export async function buildAllPublicWikis(defs: PublicWikiDef[], opts: { force?: boolean } = {}): Promise<void> {
+export async function buildAllPublicWikis(
+  defs: PublicWikiDef[],
+  opts: { force?: boolean } = {}
+): Promise<void> {
   for (const def of defs) {
     try {
       await buildPublicWiki(def, opts);
     } catch (e) {
-      log.error(`Failed to build public wiki: ${def.name}`, { error: String(e) });
+      log.error(`Failed to build public wiki: ${def.name}`, {
+        error: String(e),
+      });
     }
   }
 }

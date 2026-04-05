@@ -4,9 +4,9 @@
  * Exposes wiki search, read, and list as tools for AI agents.
  * Mounted at /mcp as an HTTP transport endpoint.
  */
-import { Database } from "bun:sqlite";
-import { search } from "./search";
-import { getFile, listFiles, getPageUpdates } from "./storage";
+import type { Database } from 'bun:sqlite';
+import { search } from './search';
+import { getFile, getPageUpdates, listFiles } from './storage';
 
 export interface McpTool {
   name: string;
@@ -15,83 +15,95 @@ export interface McpTool {
 }
 
 export interface McpToolResult {
-  content: { type: "text"; text: string }[];
+  content: { type: 'text'; text: string }[];
   isError?: boolean;
 }
 
 export const MCP_TOOLS: McpTool[] = [
   {
-    name: "list_wikis",
-    description: "List all available wikis.",
+    name: 'list_wikis',
+    description: 'List all available wikis.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {},
     },
   },
   {
-    name: "search_wiki",
-    description: "Search wiki pages by keyword or semantic query. Returns matching chunks ranked by relevance.",
+    name: 'search_wiki',
+    description:
+      'Search wiki pages by keyword or semantic query. Returns matching chunks ranked by relevance.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        wiki: { type: "string", description: "Wiki name (e.g. 'depends')" },
-        query: { type: "string", description: "Search query" },
-        limit: { type: "number", description: "Max results (default 10)" },
+        wiki: { type: 'string', description: "Wiki name (e.g. 'depends')" },
+        query: { type: 'string', description: 'Search query' },
+        limit: { type: 'number', description: 'Max results (default 10)' },
       },
-      required: ["wiki", "query"],
+      required: ['wiki', 'query'],
     },
   },
   {
-    name: "read_page",
-    description: "Read the full markdown content of a wiki page.",
+    name: 'read_page',
+    description: 'Read the full markdown content of a wiki page.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        wiki: { type: "string", description: "Wiki name (e.g. 'depends')" },
-        page: { type: "string", description: "Page name without .md extension (e.g. 'architecture')" },
+        wiki: { type: 'string', description: "Wiki name (e.g. 'depends')" },
+        page: {
+          type: 'string',
+          description: "Page name without .md extension (e.g. 'architecture')",
+        },
       },
-      required: ["wiki", "page"],
+      required: ['wiki', 'page'],
     },
   },
   {
-    name: "list_pages",
-    description: "List all pages in a wiki.",
+    name: 'list_pages',
+    description: 'List all pages in a wiki.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        wiki: { type: "string", description: "Wiki name (e.g. 'depends')" },
+        wiki: { type: 'string', description: "Wiki name (e.g. 'depends')" },
       },
-      required: ["wiki"],
+      required: ['wiki'],
     },
   },
 ];
 
 function getWiki(db: Database, wikiName: string): { id: number } | null {
-  return db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
+  return db.prepare('SELECT id FROM wikis WHERE name = ?').get(wikiName) as {
+    id: number;
+  } | null;
 }
 
 function textResult(text: string): McpToolResult {
-  return { content: [{ type: "text", text }] };
+  return { content: [{ type: 'text', text }] };
 }
 
 function errorResult(text: string): McpToolResult {
-  return { content: [{ type: "text", text }], isError: true };
+  return { content: [{ type: 'text', text }], isError: true };
 }
 
 export async function handleToolCall(
   db: Database,
   toolName: string,
-  args: Record<string, unknown>,
+  args: Record<string, unknown>
 ): Promise<McpToolResult> {
   switch (toolName) {
-    case "list_wikis": {
-      const wikis = db.prepare("SELECT name, description FROM wikis ORDER BY name").all() as { name: string; description: string }[];
-      if (wikis.length === 0) return textResult("No wikis found.");
-      const text = wikis.map((w) => w.description ? `- ${w.name}: ${w.description}` : `- ${w.name}`).join("\n");
+    case 'list_wikis': {
+      const wikis = db
+        .prepare('SELECT name, description FROM wikis ORDER BY name')
+        .all() as { name: string; description: string }[];
+      if (wikis.length === 0) return textResult('No wikis found.');
+      const text = wikis
+        .map((w) =>
+          w.description ? `- ${w.name}: ${w.description}` : `- ${w.name}`
+        )
+        .join('\n');
       return textResult(text);
     }
 
-    case "search_wiki": {
+    case 'search_wiki': {
       const wikiName = args.wiki as string;
       const query = args.query as string;
       const limit = (args.limit as number) || 10;
@@ -100,39 +112,44 @@ export async function handleToolCall(
       if (!wiki) return errorResult(`Wiki "${wikiName}" not found.`);
 
       const results = await search(db, wiki.id, query, { limit });
-      if (results.length === 0) return textResult("No results found.");
+      if (results.length === 0) return textResult('No results found.');
 
       const text = results
         .map((r, i) => {
-          const page = r.path.replace(/\.md$/, "");
+          const page = r.path.replace(/\.md$/, '');
           return `${i + 1}. **${page}** (score: ${r.score.toFixed(2)})\n   ${r.chunk.slice(0, 200)}`;
         })
-        .join("\n\n");
+        .join('\n\n');
 
       return textResult(text);
     }
 
-    case "read_page": {
+    case 'read_page': {
       const wikiName = args.wiki as string;
       const page = args.page as string;
 
       const wiki = getWiki(db, wikiName);
       if (!wiki) return errorResult(`Wiki "${wikiName}" not found.`);
 
-      const path = page.endsWith(".md") ? page : `${page}.md`;
+      const path = page.endsWith('.md') ? page : `${page}.md`;
       const file = getFile(db, wiki.id, path);
-      if (!file?.content) return errorResult(`Page "${page}" not found in wiki "${wikiName}".`);
+      if (!file?.content)
+        return errorResult(`Page "${page}" not found in wiki "${wikiName}".`);
 
       const updates = getPageUpdates(db, wiki.id, path);
       if (updates.length > 0) {
-        const log = updates.map((u) => `- ${u.created_at}: ${u.summary}`).join("\n");
-        return textResult(`${file.content}\n\n---\n\n## Recent Changes\n\n${log}`);
+        const log = updates
+          .map((u) => `- ${u.created_at}: ${u.summary}`)
+          .join('\n');
+        return textResult(
+          `${file.content}\n\n---\n\n## Recent Changes\n\n${log}`
+        );
       }
 
       return textResult(file.content);
     }
 
-    case "list_pages": {
+    case 'list_pages': {
       const wikiName = args.wiki as string;
 
       const wiki = getWiki(db, wikiName);
@@ -140,11 +157,11 @@ export async function handleToolCall(
 
       const files = listFiles(db, wiki.id);
       const pages = files
-        .filter((f) => f.path.endsWith(".md"))
-        .map((f) => f.path.replace(/\.md$/, ""));
+        .filter((f) => f.path.endsWith('.md'))
+        .map((f) => f.path.replace(/\.md$/, ''));
 
-      if (pages.length === 0) return textResult("No pages found.");
-      return textResult(pages.join("\n"));
+      if (pages.length === 0) return textResult('No pages found.');
+      return textResult(pages.join('\n'));
     }
 
     default:
@@ -158,7 +175,7 @@ export async function handleToolCall(
  */
 export async function handleMcpRequest(
   db: Database,
-  body: Record<string, unknown>,
+  body: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   const { method, id, params } = body as {
     method: string;
@@ -167,39 +184,42 @@ export async function handleMcpRequest(
   };
 
   switch (method) {
-    case "initialize":
+    case 'initialize':
       return {
-        jsonrpc: "2.0",
+        jsonrpc: '2.0',
         id,
         result: {
-          protocolVersion: "2024-11-05",
+          protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: "wikis.fyi", version: "1.0.0" },
+          serverInfo: { name: 'wikis.fyi', version: '1.0.0' },
         },
       };
 
-    case "notifications/initialized":
+    case 'notifications/initialized':
       // Client ack — no response needed for notifications
-      return { jsonrpc: "2.0", id, result: {} };
+      return { jsonrpc: '2.0', id, result: {} };
 
-    case "tools/list":
+    case 'tools/list':
       return {
-        jsonrpc: "2.0",
+        jsonrpc: '2.0',
         id,
         result: { tools: MCP_TOOLS },
       };
 
-    case "tools/call": {
-      const p = params as { name?: string; arguments?: Record<string, unknown> };
+    case 'tools/call': {
+      const p = params as {
+        name?: string;
+        arguments?: Record<string, unknown>;
+      };
       const toolName = p.name as string;
       const args = p.arguments ?? {};
       const result = await handleToolCall(db, toolName, args);
-      return { jsonrpc: "2.0", id, result };
+      return { jsonrpc: '2.0', id, result };
     }
 
     default:
       return {
-        jsonrpc: "2.0",
+        jsonrpc: '2.0',
         id,
         error: { code: -32601, message: `Method not found: ${method}` },
       };

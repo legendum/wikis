@@ -1,30 +1,34 @@
-import { Elysia } from "elysia";
-import { extractBearerToken, validateAccountKey, storeAccountKey } from "../lib/auth";
-import { getUserDb, getPublicDb, getUserByEmail, createUser } from "../lib/db";
-import { handleMcpRequest } from "../lib/mcp";
-import { search } from "../lib/search";
-import { getManifest, upsertFile, getFile, hashContent } from "../lib/storage";
-import { indexFile } from "../lib/indexer";
-import { diffManifests, type Manifest } from "../lib/sync";
+import { Elysia } from 'elysia';
+import {
+  extractBearerToken,
+  storeAccountKey,
+  validateAccountKey,
+} from '../lib/auth';
+import { createUser, getPublicDb, getUserByEmail, getUserDb } from '../lib/db';
+import { indexFile } from '../lib/indexer';
+import { handleMcpRequest } from '../lib/mcp';
+import { search } from '../lib/search';
+import { getFile, getManifest, hashContent, upsertFile } from '../lib/storage';
+import { diffManifests, type Manifest } from '../lib/sync';
 
 /**
  * Auth middleware — extracts user from account key.
  */
 function authGuard(headers: Record<string, string | undefined>) {
   const token = extractBearerToken(headers.authorization);
-  if (!token) throw new Error("Missing Authorization header");
+  if (!token) throw new Error('Missing Authorization header');
 
   const user = validateAccountKey(token);
-  if (!user) throw new Error("Invalid account key");
+  if (!user) throw new Error('Invalid account key');
 
   return { user, db: getUserDb(user.id) };
 }
 
-export const apiRoutes = new Elysia({ prefix: "/api" })
+export const apiRoutes = new Elysia({ prefix: '/api' })
 
   // --- Sync ---
 
-  .post("/sync", async ({ body, headers }) => {
+  .post('/sync', async ({ body, headers }) => {
     const { db } = authGuard(headers);
     const { wiki: wikiName, files: localManifest } = body as {
       wiki: string;
@@ -32,10 +36,14 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     };
 
     // Get or create wiki
-    let wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
+    let wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get(wikiName) as { id: number } | null;
     if (!wiki) {
-      db.prepare("INSERT INTO wikis (name) VALUES (?)").run(wikiName);
-      wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number };
+      db.prepare('INSERT INTO wikis (name) VALUES (?)').run(wikiName);
+      wiki = db
+        .prepare('SELECT id FROM wikis WHERE name = ?')
+        .get(wikiName) as { id: number };
     }
 
     const remoteManifest = getManifest(db, wiki.id);
@@ -44,34 +52,40 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     return { ok: true, data: plan };
   })
 
-  .post("/push", async ({ body, headers }) => {
+  .post('/push', async ({ body, headers }) => {
     const { db } = authGuard(headers);
     const { wiki: wikiName, files } = body as {
       wiki: string;
       files: { path: string; content: string; modified: string }[];
     };
 
-    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
-    if (!wiki) return { ok: false, error: "wiki_not_found" };
+    const wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get(wikiName) as { id: number } | null;
+    if (!wiki) return { ok: false, error: 'wiki_not_found' };
 
     for (const file of files) {
       upsertFile(db, wiki.id, file.path, file.content, file.modified);
       // Index wiki content for search
-      await indexFile(db, wiki.id, "wiki_chunks", file.path, file.content, { embeddings: false });
+      await indexFile(db, wiki.id, 'wiki_chunks', file.path, file.content, {
+        embeddings: false,
+      });
     }
 
     return { ok: true, data: { pushed: files.length } };
   })
 
-  .post("/pull", async ({ body, headers }) => {
+  .post('/pull', async ({ body, headers }) => {
     const { db } = authGuard(headers);
     const { wiki: wikiName, paths } = body as {
       wiki: string;
       paths: string[];
     };
 
-    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
-    if (!wiki) return { ok: false, error: "wiki_not_found" };
+    const wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get(wikiName) as { id: number } | null;
+    if (!wiki) return { ok: false, error: 'wiki_not_found' };
 
     const files = paths
       .map((p) => getFile(db, wiki.id, p))
@@ -88,7 +102,7 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
   // --- Source ingestion ---
 
-  .post("/sources", async ({ body, headers }) => {
+  .post('/sources', async ({ body, headers }) => {
     try {
       const { user, db } = authGuard(headers);
       const { wiki: wikiName, files } = body as {
@@ -96,17 +110,21 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
         files: { path: string; content: string }[];
       };
 
-      const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
-      if (!wiki) return { ok: false, error: "wiki_not_found" };
+      const wiki = db
+        .prepare('SELECT id FROM wikis WHERE name = ?')
+        .get(wikiName) as { id: number } | null;
+      if (!wiki) return { ok: false, error: 'wiki_not_found' };
 
       // Store source files — only update modified_at when content changed
       const now = new Date().toISOString();
       let changed = 0;
       for (const file of files) {
         const hash = hashContent(file.content);
-        const existing = db.prepare(
-          "SELECT hash FROM source_files WHERE wiki_id = ? AND path = ?"
-        ).get(wiki.id, file.path) as { hash: string } | null;
+        const existing = db
+          .prepare(
+            'SELECT hash FROM source_files WHERE wiki_id = ? AND path = ?'
+          )
+          .get(wiki.id, file.path) as { hash: string } | null;
 
         if (existing?.hash === hash) continue;
 
@@ -122,13 +140,15 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
       }
 
       const wikiPageCount = (
-        db.prepare("SELECT COUNT(*) as c FROM wiki_files WHERE wiki_id = ?").get(wiki.id) as { c: number }
+        db
+          .prepare('SELECT COUNT(*) as c FROM wiki_files WHERE wiki_id = ?')
+          .get(wiki.id) as { c: number }
       ).c;
       // Sources can match the DB (changed === 0) while no wiki pages exist yet — e.g. first
       // upload succeeded but the agent never ran, or only source_files were restored.
       const needsInitialBuild = files.length > 0 && wikiPageCount === 0;
 
-      const { scheduleRegeneration } = await import("../lib/regenerator");
+      const { scheduleRegeneration } = await import('../lib/regenerator');
       const dbPath = `user${user.id}`;
       const wikiConfig = { name: wikiName, legendumToken: user.legendum_token };
 
@@ -136,7 +156,10 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
       const queuedRegeneration = wantsBuild
         ? scheduleRegeneration(dbPath, db, wiki.id, wikiConfig, {
             debounce: wikiPageCount > 0,
-            reason: wikiPageCount === 0 ? "initial wiki build" : "source files changed",
+            reason:
+              wikiPageCount === 0
+                ? 'initial wiki build'
+                : 'source files changed',
           })
         : false;
 
@@ -149,20 +172,23 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
         },
       };
     } catch (e) {
-      console.error("Sources endpoint error:", e);
-      return { ok: false, error: "internal_error" };
+      console.error('Sources endpoint error:', e);
+      return { ok: false, error: 'internal_error' };
     }
   })
 
   // --- Search ---
 
-  .get("/search/:wiki", async ({ params, query, headers }) => {
+  .get('/search/:wiki', async ({ params, query, headers }) => {
     const { db } = authGuard(headers);
     const q = query.q as string;
-    if (!q) return { ok: false, error: "missing_query", message: "?q= is required" };
+    if (!q)
+      return { ok: false, error: 'missing_query', message: '?q= is required' };
 
-    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(params.wiki) as { id: number } | null;
-    if (!wiki) return { ok: false, error: "wiki_not_found" };
+    const wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get(params.wiki) as { id: number } | null;
+    if (!wiki) return { ok: false, error: 'wiki_not_found' };
 
     const limit = Number(query.limit) || undefined;
 
@@ -173,44 +199,56 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
   // --- Wiki management ---
 
-  .get("/wikis", ({ headers }) => {
+  .get('/wikis', ({ headers }) => {
     const { db } = authGuard(headers);
-    const wikis = db.prepare("SELECT id, name, visibility, created_at FROM wikis ORDER BY name").all();
+    const wikis = db
+      .prepare(
+        'SELECT id, name, visibility, created_at FROM wikis ORDER BY name'
+      )
+      .all();
     return { ok: true, data: { wikis } };
   })
 
-  .delete("/wikis/:name", ({ params, headers }) => {
+  .delete('/wikis/:name', ({ params, headers }) => {
     const { db } = authGuard(headers);
-    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(params.name) as { id: number } | null;
-    if (!wiki) return { ok: false, error: "wiki_not_found" };
+    const wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get(params.name) as { id: number } | null;
+    if (!wiki) return { ok: false, error: 'wiki_not_found' };
 
     // Cascade delete
-    db.prepare("DELETE FROM wiki_chunks WHERE wiki_id = ?").run(wiki.id);
-    db.prepare("DELETE FROM source_files WHERE wiki_id = ?").run(wiki.id);
-    db.prepare("DELETE FROM wiki_files WHERE wiki_id = ?").run(wiki.id);
-    db.prepare("DELETE FROM events WHERE wiki_id = ?").run(wiki.id);
-    db.prepare("DELETE FROM wikis WHERE id = ?").run(wiki.id);
+    db.prepare('DELETE FROM wiki_chunks WHERE wiki_id = ?').run(wiki.id);
+    db.prepare('DELETE FROM source_files WHERE wiki_id = ?').run(wiki.id);
+    db.prepare('DELETE FROM wiki_files WHERE wiki_id = ?').run(wiki.id);
+    db.prepare('DELETE FROM events WHERE wiki_id = ?').run(wiki.id);
+    db.prepare('DELETE FROM wikis WHERE id = ?').run(wiki.id);
 
     return { ok: true };
   })
 
   // --- Usage ---
 
-  .get("/usage", ({ headers }) => {
+  .get('/usage', ({ headers }) => {
     const { db } = authGuard(headers);
 
     const period = new Date();
     period.setDate(1);
     const periodStart = period.toISOString().slice(0, 10);
 
-    const events = db.prepare(`
+    const events = db
+      .prepare(`
       SELECT type, SUM(count) as total
       FROM events
       WHERE created_at >= ?
       GROUP BY type
-    `).all(periodStart) as { type: string; total: number }[];
+    `)
+      .all(periodStart) as { type: string; total: number }[];
 
-    const wikiCount = (db.prepare("SELECT COUNT(*) as count FROM wikis").get() as { count: number }).count;
+    const wikiCount = (
+      db.prepare('SELECT COUNT(*) as count FROM wikis').get() as {
+        count: number;
+      }
+    ).count;
 
     const usage: Record<string, number> = {};
     for (const e of events) usage[e.type] = e.total;
@@ -229,34 +267,48 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
   // --- Rebuild ---
 
-  .post("/rebuild", async ({ body, headers }) => {
+  .post('/rebuild', async ({ body, headers }) => {
     const { user, db } = authGuard(headers);
     const { wiki: wikiName, force } = body as { wiki: string; force?: boolean };
 
-    const wiki = db.prepare("SELECT id FROM wikis WHERE name = ?").get(wikiName) as { id: number } | null;
-    if (!wiki) return { ok: false, error: "wiki_not_found" };
+    const wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get(wikiName) as { id: number } | null;
+    if (!wiki) return { ok: false, error: 'wiki_not_found' };
 
     // Run in background — builds can take 15+ minutes
-    import("../lib/agent").then(({ runAgent }) => {
-      runAgent(db, wiki.id, { name: wikiName, legendumToken: user.legendum_token }, {
-        reason: "manual rebuild",
-        force: !!force,
-      }).catch((e) => {
-        import("../lib/log").then(({ log }) => {
-          log.error(`Rebuild failed for ${wikiName}`, { wiki: wikiName, error: (e as Error).message });
+    import('../lib/agent').then(({ runAgent }) => {
+      runAgent(
+        db,
+        wiki.id,
+        { name: wikiName, legendumToken: user.legendum_token },
+        {
+          reason: 'manual rebuild',
+          force: !!force,
+        }
+      ).catch((e) => {
+        import('../lib/log').then(({ log }) => {
+          log.error(`Rebuild failed for ${wikiName}`, {
+            wiki: wikiName,
+            error: (e as Error).message,
+          });
         });
       });
     });
 
-    return { ok: true, data: { message: "Rebuild started" } };
+    return { ok: true, data: { message: 'Rebuild started' } };
   })
 
   // --- Login (register account key) ---
 
-  .post("/login", async ({ body }) => {
+  .post('/login', async ({ body }) => {
     const { key } = body as { key: string };
-    if (!key || !key.startsWith("lak_")) {
-      return { ok: false, error: "invalid_key", message: "Key must start with lak_" };
+    if (!key || !key.startsWith('lak_')) {
+      return {
+        ok: false,
+        error: 'invalid_key',
+        message: 'Key must start with lak_',
+      };
     }
 
     // Already registered?
@@ -266,21 +318,31 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     }
 
     // Validate against Legendum
-    const mod = await import("../lib/legendum.js");
+    const mod = await import('../lib/legendum.js');
     const legendum = mod.default || mod;
     try {
       const acct = legendum.account(key);
       const whoami = await acct.whoami();
       const email = whoami.email;
       if (!email) {
-        return { ok: false, error: "invalid_key", message: "Could not verify account key" };
+        return {
+          ok: false,
+          error: 'invalid_key',
+          message: 'Could not verify account key',
+        };
       }
 
       // Find or create user
       let user = getUserByEmail(email);
       if (!user) {
         const userId = createUser(email);
-        user = { id: userId, email, legendum_token: null, db_path: `data/user${userId}.db`, created_at: "" };
+        user = {
+          id: userId,
+          email,
+          legendum_token: null,
+          db_path: `data/user${userId}.db`,
+          created_at: '',
+        };
       }
 
       // Store key hash
@@ -288,13 +350,13 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
       return { ok: true, data: { email } };
     } catch (e) {
-      return { ok: false, error: "invalid_key", message: (e as Error).message };
+      return { ok: false, error: 'invalid_key', message: (e as Error).message };
     }
   })
 
   // --- MCP server ---
 
-  .post("/mcp", async ({ body, headers }) => {
+  .post('/mcp', async ({ body, headers }) => {
     // MCP supports both authenticated (user wikis) and public wikis
     const token = extractBearerToken(headers.authorization);
     let db;

@@ -1,5 +1,5 @@
-import { Database } from "bun:sqlite";
-import { createHash } from "crypto";
+import type { Database } from 'bun:sqlite';
+import { createHash } from 'crypto';
 
 interface WikiFileRow {
   id: number;
@@ -15,7 +15,7 @@ interface WikiFileRow {
  * Hash content with SHA-256.
  */
 export function hashContent(content: string): string {
-  return createHash("sha256").update(content).digest("hex").slice(0, 16);
+  return createHash('sha256').update(content).digest('hex').slice(0, 16);
 }
 
 /**
@@ -26,7 +26,7 @@ export function upsertFile(
   wikiId: number,
   path: string,
   content: string,
-  modified: string,
+  modified: string
 ): void {
   const hash = hashContent(content);
 
@@ -49,31 +49,27 @@ export function getFile(
   path: string
 ): WikiFileRow | null {
   return db
-    .prepare("SELECT * FROM wiki_files WHERE wiki_id = ? AND path = ?")
+    .prepare('SELECT * FROM wiki_files WHERE wiki_id = ? AND path = ?')
     .get(wikiId, path) as WikiFileRow | null;
 }
 
 /**
  * Get all files for a wiki.
  */
-export function listFiles(
-  db: Database,
-  wikiId: number
-): WikiFileRow[] {
+export function listFiles(db: Database, wikiId: number): WikiFileRow[] {
   return db
-    .prepare("SELECT * FROM wiki_files WHERE wiki_id = ? ORDER BY path")
+    .prepare('SELECT * FROM wiki_files WHERE wiki_id = ? ORDER BY path')
     .all(wikiId) as WikiFileRow[];
 }
 
 /**
  * Delete a wiki file.
  */
-export function deleteFile(
-  db: Database,
-  wikiId: number,
-  path: string
-): void {
-  db.prepare("DELETE FROM wiki_files WHERE wiki_id = ? AND path = ?").run(wikiId, path);
+export function deleteFile(db: Database, wikiId: number, path: string): void {
+  db.prepare('DELETE FROM wiki_files WHERE wiki_id = ? AND path = ?').run(
+    wikiId,
+    path
+  );
 }
 
 /**
@@ -83,10 +79,10 @@ export function recordUpdate(
   db: Database,
   wikiId: number,
   path: string,
-  summary: string,
+  summary: string
 ): void {
   db.prepare(
-    "INSERT INTO wiki_updates (wiki_id, path, summary) VALUES (?, ?, ?)"
+    'INSERT INTO wiki_updates (wiki_id, path, summary) VALUES (?, ?, ?)'
   ).run(wikiId, path, summary);
 }
 
@@ -97,11 +93,11 @@ export function getPageUpdates(
   db: Database,
   wikiId: number,
   path: string,
-  limit = 5,
+  limit = 5
 ): { summary: string; created_at: string }[] {
   return db
     .prepare(
-      "SELECT summary, created_at FROM wiki_updates WHERE wiki_id = ? AND path = ? ORDER BY created_at DESC LIMIT ?"
+      'SELECT summary, created_at FROM wiki_updates WHERE wiki_id = ? AND path = ? ORDER BY created_at DESC LIMIT ?'
     )
     .all(wikiId, path, limit) as { summary: string; created_at: string }[];
 }
@@ -114,7 +110,7 @@ export function getManifest(
   wikiId: number
 ): Record<string, { hash: string; modified: string }> {
   const rows = db
-    .prepare("SELECT path, hash, modified_at FROM wiki_files WHERE wiki_id = ?")
+    .prepare('SELECT path, hash, modified_at FROM wiki_files WHERE wiki_id = ?')
     .all(wikiId) as { path: string; hash: string; modified_at: string }[];
 
   const manifest: Record<string, { hash: string; modified: string }> = {};
