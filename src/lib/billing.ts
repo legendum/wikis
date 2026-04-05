@@ -196,7 +196,7 @@ export function getMonthlyUsage(db: Database): Record<EventType, number> {
     .prepare("SELECT type, SUM(count) as total FROM events WHERE created_at >= ? GROUP BY type")
     .all(periodStart) as { type: EventType; total: number }[];
 
-  const usage: Record<string, number> = { source_push: 0, wiki_update: 0, storage: 0 };
+  const usage: Record<string, number> = { source_push: 0, wiki_update: 0, credits_used: 0, storage: 0 };
   for (const row of rows) usage[row.type] = row.total;
   return usage as Record<EventType, number>;
 }

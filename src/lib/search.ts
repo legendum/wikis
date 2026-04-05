@@ -128,6 +128,7 @@ export async function search(
   }
 
   // Look up embeddings for the FTS candidate chunks
+  const worstRank = Math.min(...ftsResults.map((r) => r.rank));
   const results: SearchResult[] = [];
   for (const row of ftsResults) {
     const chunkRow = db.prepare(
@@ -138,9 +139,7 @@ export async function search(
     if (chunkRow?.embedding) {
       score = cosineSimilarity(queryEmbedding, deserializeEmbedding(chunkRow.embedding));
     } else {
-      // No embedding for this chunk — use normalized FTS rank
-      const worst = Math.min(...ftsResults.map((r) => r.rank));
-      score = normalizeFtsRank(row.rank, worst) * 0.5; // demote unembedded results
+      score = normalizeFtsRank(row.rank, worstRank) * 0.5;
     }
 
     results.push({ path: row.path, chunk: row.content, score });

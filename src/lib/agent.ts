@@ -20,14 +20,6 @@ function getSourceTree(db: Database, wikiId: number): string {
     "SELECT DISTINCT path FROM source_files WHERE wiki_id = ? ORDER BY path"
   ).all(wikiId) as { path: string }[];
 
-  // Build indented tree
-  const tree: string[] = [];
-  for (const row of rows) {
-    const parts = row.path.split("/");
-    const indent = "  ".repeat(parts.length - 1);
-    tree.push(`${indent}${parts[parts.length - 1]}`);
-  }
-  // Deduplicate directory lines by building a proper tree
   const dirs = new Set<string>();
   const lines: string[] = [];
   for (const row of rows) {
@@ -123,15 +115,9 @@ function setWikiPaths(db: Database, wikiId: number, sourcePaths: string[], wikiP
 
 /** Find wiki pages that need regenerating because their source files changed. */
 function findChangedPages(db: Database, wikiId: number): Set<string> {
-  // Source files with wiki_paths set have been used to build wiki pages.
-  // We compare source_files.hash with the source_hash stored on wiki_files.
-  // But simpler: the caller (public-wikis.ts) updates source_files with new hashes
-  // when it syncs. We just need to find source files whose hash differs from
-  // what it was when the wiki page was last built.
-  //
-  // For now, we track this via source_files.modified_at vs wiki_files.modified_at.
-  // A source file that was modified after its wiki page was last built means
-  // the wiki page needs regenerating.
+  // Compare source_files.modified_at vs wiki_files.modified_at.
+  // A source file modified after its wiki page was last built means
+  // that wiki page needs regenerating.
   const rows = db.prepare(`
     SELECT sf.wiki_paths, sf.modified_at as src_modified
     FROM source_files sf
@@ -331,7 +317,6 @@ export async function runAgent(
     }
 
     // Pick which source files are relevant
-    const allSourcePaths = getSourcePaths(db, wikiId);
     let selectedFiles: string[];
     try {
       const pick = await pickFilesForSection(db, wikiId, config, section, tree);
@@ -340,7 +325,7 @@ export async function runAgent(
       result.usage.output_tokens += pick.usage.output_tokens;
     } catch (e) {
       log.error(`Section "${section.name}": file selection failed, using all files`, { wiki: config.name, error: (e as Error).message });
-      selectedFiles = allSourcePaths;
+      selectedFiles = getSourcePaths(db, wikiId);
     }
 
     // Fetch the actual file contents
@@ -632,7 +617,6 @@ ${sourceContext || "(no relevant sources found)"}`,
     await fillMissingPages(db, wikiId, config, result, depth + 1);
   }
 }
-
 
 /**
  * Extract markdown from LLM response (strip code fences if present).

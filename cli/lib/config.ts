@@ -1,7 +1,7 @@
 /**
  * CLI config — reads/writes ~/.config/wikis/config.yaml
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { resolve } from "path";
 import yaml from "js-yaml";
 
@@ -112,10 +112,7 @@ export function writeDaemonPid(pid: number): void {
 }
 
 export function removeDaemonPid(): void {
-  if (existsSync(DAEMON_PID_PATH)) {
-    const { unlinkSync } = require("fs");
-    unlinkSync(DAEMON_PID_PATH);
-  }
+  if (existsSync(DAEMON_PID_PATH)) unlinkSync(DAEMON_PID_PATH);
 }
 
 export function isDaemonRunning(): boolean {
