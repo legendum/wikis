@@ -44,7 +44,7 @@ const ALIASES: Record<string, Provider> = {
 };
 
 const DEFAULT_MODELS: Record<Provider, string> = {
-  xai: 'grok-3-mini-fast',
+  xai: 'grok-4-1-fast-reasoning',
   openai: 'gpt-4o-mini',
   google: 'gemini-2.0-flash',
   anthropic: 'claude-sonnet-4-5-20241022',

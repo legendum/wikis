@@ -116,6 +116,11 @@ export XAI_API_KEY=xai-...
 wikis serve
 ```
 
+Default models:
+- Grok: `grok-4-1-fast-reasoning`
+- Claude: `claude-sonnet-4-5-20241022`
+- GPT: `gpt-4o-mini`
+
 The daemon connects to your local server just like it would to wikis.fyi.
 
 ## Development

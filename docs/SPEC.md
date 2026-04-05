@@ -647,7 +647,7 @@ When these are set, billing is active and the server uses its own LLM keys (oper
 ```bash
 CLAUDE_API_KEY=sk-ant-...       # Anthropic
 OPENAI_API_KEY=sk-...           # OpenAI
-XAI_API_KEY=xai-...             # xAI / Grok
+XAI_API_KEY=xai-...             # xAI / Grok (uses grok-4-1-fast-reasoning)
 GEMINI_API_KEY=...              # Google Gemini
 ```
 

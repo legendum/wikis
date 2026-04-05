@@ -1,7 +1,7 @@
 models:
   xai:
     label: Grok
-    model: grok-4-1-fast
+    model: grok-4-1-fast-reasoning
     input_credits_per_million: 200
     output_credits_per_million: 500
     markup_percent: 150
