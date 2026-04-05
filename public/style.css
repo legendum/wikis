@@ -106,6 +106,12 @@ header .search-results {
   margin-top: 0.25rem;
 }
 
+header nav a {
+  color: #0066cc;
+  text-decoration: none;
+  font-weight: 600;
+}
+
 header .search-results a {
   color: #0066cc;
   text-decoration: none;
@@ -124,14 +130,6 @@ header .search-results li {
   line-height: 1.4;
 }
 
-header .search-results li:last-child {
-  border-bottom: none;
-}
-
-header .search-results li:hover {
-  background: #f8f8f8;
-}
-
 header .search-results li a {
   display: block;
   padding: 0.5rem 0.75rem;
@@ -139,10 +137,12 @@ header .search-results li a {
   text-decoration: none;
 }
 
-header nav a {
-  color: #0066cc;
-  text-decoration: none;
-  font-weight: 600;
+header .search-results li:last-child {
+  border-bottom: none;
+}
+
+header .search-results li:hover {
+  background: #f8f8f8;
 }
 
 main h1 {

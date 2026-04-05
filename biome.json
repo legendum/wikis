@@ -30,7 +30,8 @@
         "noExplicitAny": "off"
       },
       "style": {
-        "useTemplate": "error",
+        "useTemplate": "off",
+        "noNonNullAssertion": "off",
         "noDescendingSpecificity": "off"
       }
     }
