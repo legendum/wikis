@@ -11,14 +11,14 @@ import { extractBearerToken, validateAccountKey } from "../lib/auth";
 import { getSessionUser } from "./auth";
 import { CONTENT_TYPE_MARKDOWN_UTF8, LEGENDUM_BASE_URL } from "../lib/constants";
 
-/** Line that starts a typical markdown block (heading, list, quote, table, hr). */
-function looksLikeMarkdownBlockStart(line: string): boolean {
+/**
+ * After a blank line, treat the next line as "end of unclosed fence" only when it clearly
+ * starts markdown — not list items (`- ` / `1. `), which also appear in YAML and JSON inside fences.
+ */
+function looksLikeImplicitFenceTerminator(line: string): boolean {
   const t = line.trimStart();
   if (/^#{1,6}\s/.test(t)) return true;
-  if (/^[-*+]\s/.test(t)) return true;
-  if (/^\d+\.\s/.test(t)) return true;
   if (/^>\s/.test(t)) return true;
-  if (/^\|/.test(t)) return true;
   if (/^([-*_])\s*\1\s*\1\s*$/.test(t.trim())) return true;
   return false;
 }
@@ -88,7 +88,7 @@ function extractFencedCodeBlocks(md: string): { processed: string; codeBlocks: s
         codeLines.length > 0
       ) {
         const next = lines[i + 1];
-        if (looksLikeMarkdownBlockStart(next) || looksLikeProseAfterCodeBlank(next)) {
+        if (looksLikeImplicitFenceTerminator(next) || looksLikeProseAfterCodeBlank(next)) {
           break;
         }
       }
