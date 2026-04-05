@@ -5,6 +5,7 @@ import {
   validateAccountKey,
 } from '../lib/auth';
 import { createUser, getPublicDb, getUserByEmail, getUserDb } from '../lib/db';
+import type { Database } from 'bun:sqlite';
 import { indexFile } from '../lib/indexer';
 import { handleMcpRequest } from '../lib/mcp';
 import { search } from '../lib/search';
@@ -226,6 +227,30 @@ export const apiRoutes = new Elysia({ prefix: '/api' })
     return { ok: true };
   })
 
+  // Delete individual wiki page and its chunks
+  .delete('/wikis/:name/pages/:path', ({ params, headers }) => {
+    const { db } = authGuard(headers);
+    const wiki = db
+      .prepare('SELECT id FROM wikis WHERE name = ?')
+      .get(params.name) as { id: number } | null;
+
+    if (!wiki) return { ok: false, error: 'wiki_not_found' };
+
+    const pagePath = `${params.path}.md`;
+
+    // Delete from wiki_files and chunks
+    db.prepare('DELETE FROM wiki_files WHERE wiki_id = ? AND path = ?').run(
+      wiki.id,
+      pagePath
+    );
+    db.prepare('DELETE FROM wiki_chunks WHERE wiki_id = ? AND path = ?').run(
+      wiki.id,
+      pagePath
+    );
+
+    return { ok: true };
+  })
+
   // --- Usage ---
 
   .get('/usage', ({ headers }) => {
@@ -359,7 +384,7 @@ export const apiRoutes = new Elysia({ prefix: '/api' })
   .post('/mcp', async ({ body, headers }) => {
     // MCP supports both authenticated (user wikis) and public wikis
     const token = extractBearerToken(headers.authorization);
-    let db;
+    let db: Database;
     if (token) {
       const user = validateAccountKey(token);
       if (user) {

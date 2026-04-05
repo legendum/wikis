@@ -21,6 +21,10 @@ const COMMANDS: Record<string, { description: string; usage?: string }> = {
     description: 'Unregister the current project',
     usage: 'wikis remove',
   },
+  delete: {
+    description: 'Delete a wiki page locally and on the server',
+    usage: 'wikis delete <page>',
+  },
   search: { description: 'Search wiki pages', usage: 'wikis search <query>' },
   serve: { description: 'Start the web server', usage: 'wikis serve' },
   start: { description: 'Start the background daemon', usage: 'wikis start' },
