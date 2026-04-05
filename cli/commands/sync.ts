@@ -74,7 +74,11 @@ async function syncProject(projectDir: string) {
     return;
   }
 
-  const pushData = (await pushRes.json()) as { ok: boolean; data?: { files: number; changed: number } };
+  const pushData = (await pushRes.json()) as { ok: boolean; error?: string; data?: { files: number; changed: number } };
+  if (!pushData.ok) {
+    console.error(`  Source push failed: ${pushData.error || "unknown error"}`);
+    return;
+  }
   console.log(`  ${pushData.data?.changed || 0} file(s) changed.`);
 
   // Pull wiki pages
