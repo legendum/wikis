@@ -11,7 +11,14 @@ import {
 const DEFAULT_CONFIG = {
   name: "",
   sources: ["src/**/*", "docs/**/*", "config/**/*", "README.md"],
-  exclude: ["node_modules/**", "*.db", ".env", "wiki/**"],
+  exclude: [
+    "node_modules/**",
+    "*.db",
+    ".env",
+    ".mcp.json",
+    "mcp.json",
+    "wiki/**",
+  ],
 };
 
 async function prompt(message: string): Promise<string> {

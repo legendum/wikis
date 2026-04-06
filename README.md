@@ -4,6 +4,8 @@
 
 wikis.fyi is a personal AI-generated wiki service. A background CLI (`wikis`) watches your project files, maintains a local `wiki/` folder of interlinked markdown pages, and syncs it to wikis.fyi for browsing and sharing. Login, linking, and billing are handled by Legendum.
 
+**📖 Live Wiki**: The complete AI-generated documentation for this project is available in the [`wiki/`](wiki/) directory (see [`wiki/index.md`](wiki/index.md)).
+
 Self-hostable: the same codebase runs at wikis.fyi and locally via `wikis serve`.
 
 ## Features

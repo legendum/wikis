@@ -1,0 +1,13 @@
+name: wikis
+sources:
+  - src/**/*
+  - docs/**/*
+  - config/**/*
+  - README.md
+exclude:
+  - node_modules/**
+  - '*.db'
+  - .env
+  - .mcp.json
+  - '**/.mcp.json'
+  - wiki/**
