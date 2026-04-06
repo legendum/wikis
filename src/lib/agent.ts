@@ -598,10 +598,12 @@ export async function runAgent(
   await consolidatePages(db, wikiId, config, chatFn, result);
 
   const hasChanges =
-    result.pagesCreated.length > 0 || result.pagesUpdated.length > 0;
+    result.pagesCreated.length > 0 ||
+    result.pagesUpdated.length > 0 ||
+    opts.reason?.toLowerCase().includes("deleted") ||
+    !!opts.force;
 
   if (hasChanges) {
-    // Only regenerate description/index when pages actually changed
     await updateDescription(db, wikiId, config);
     await updateIndex(db, wikiId, config, result);
     await appendLog(db, wikiId, config, result, opts.reason);
