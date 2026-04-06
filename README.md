@@ -134,7 +134,7 @@ The daemon connects to your local server just like it would to wikis.fyi.
 ### Setup
 
 ```bash
-git clone https://github.com/your-org/wikis
+git clone https://github.com/legendum/wikis
 cd wikis
 bun install
 ```
