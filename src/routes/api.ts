@@ -236,16 +236,13 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
     if (!wiki) return { ok: false, error: "wiki_not_found" };
 
-    const pagePath = `${params.path}.md`;
+    let pagePath = params.path;
+    if (!pagePath.endsWith(".md")) pagePath += ".md";
 
     // Mark as deleted instead of removing the record (so we remember not to regenerate it)
     db.prepare(
       "UPDATE wiki_files SET deleted = TRUE WHERE wiki_id = ? AND path = ?",
     ).run(wiki.id, pagePath);
-    db.prepare("DELETE FROM wiki_chunks WHERE wiki_id = ? AND path = ?").run(
-      wiki.id,
-      pagePath,
-    );
     db.prepare("DELETE FROM wiki_chunks WHERE wiki_id = ? AND path = ?").run(
       wiki.id,
       pagePath,

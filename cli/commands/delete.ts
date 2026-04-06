@@ -11,12 +11,13 @@ import yaml from "js-yaml";
 import { getAccountKey, getApiUrl } from "../lib/config";
 
 export default async function deletePage(args: string[]) {
-  const pageName = args[0];
+  let pageName = args[0];
   if (!pageName) {
     console.error("Usage: wikis delete <page>");
     console.error("Example: wikis delete git-integration");
     process.exit(1);
   }
+  if (pageName.endsWith(".md")) pageName = pageName.slice(0, -3);
 
   const projectDir = process.cwd();
   const wikiDir = resolve(projectDir, "wiki");

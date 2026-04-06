@@ -676,7 +676,10 @@ export async function fillMissingPages(
 
   const tree = getSourceTree(db, wikiId);
   const files = listFiles(db, wikiId);
-  const existingPaths = new Set(files.map((f) => f.path));
+  const allPaths = db
+    .prepare("SELECT path FROM wiki_files WHERE wiki_id = ?")
+    .all(wikiId) as { path: string }[];
+  const existingPaths = new Set(allPaths.map((f) => f.path));
 
   // Collect missing links with context
   const missing = new Map<string, { linkText: string; contexts: string[] }>();
