@@ -15,37 +15,6 @@ import { search } from "../lib/search";
 import { getFile, getPageUpdates } from "../lib/storage";
 import { getSessionUser } from "./auth";
 
-/**
- * After a blank line, treat the next line as "end of unclosed fence" only when it clearly
- * starts markdown — not list items (`- ` / `1. `), which also appear in YAML and JSON inside fences.
- */
-function looksLikeImplicitFenceTerminator(line: string): boolean {
-  const t = line.trimStart();
-  if (/^#{1,6}\s/.test(t)) return true;
-  if (/^>\s/.test(t)) return true;
-  if (/^([-*_])\s*\1\s*\1\s*$/.test(t.trim())) return true;
-  return false;
-}
-
-/**
- * Multi-word prose line (common when models end a fence with a blank line then a sentence).
- * Avoids treating `const x` or single identifiers as prose.
- */
-function looksLikeProseAfterCodeBlank(line: string): boolean {
-  const t = line.trimStart();
-  if (t.length < 4) return false;
-  if (!/^[A-Za-z]/.test(t)) return false;
-  if (!/\s/.test(t)) return false;
-  if (
-    /^(const|let|var|function|class|import|export|return|if|for|while|switch|case|default|async|await|interface|type|enum|namespace|def|fn|pub|use|mod|struct|trait|impl|package)\b/.test(
-      t,
-    )
-  ) {
-    return false;
-  }
-  return true;
-}
-
 /** Strip the opening fence's indent from each body line (nested / list-indented ``` blocks). */
 function dedentFenceLine(line: string, indent: string): string {
   if (!indent) return line;
@@ -55,9 +24,8 @@ function dedentFenceLine(line: string, indent: string): string {
 }
 
 /**
- * Extract fenced code blocks. Supports closing ``` and a fallback when models omit it: a blank
- * line followed by a new markdown block or obvious prose (AI docs often use only a blank line).
- * Opening fences may be indented (e.g. under list items); body lines are dedented by that amount.
+ * Extract fenced code blocks using explicit ``` only (no implicit termination).
+ * Opening fences may be indented; body lines are dedented.
  */
 function extractFencedCodeBlocks(md: string): {
   processed: string;
@@ -91,20 +59,6 @@ function extractFencedCodeBlocks(md: string): {
         explicitClose = true;
         i++;
         break;
-      }
-      if (
-        !line.trim() &&
-        i + 1 < lines.length &&
-        lines[i + 1].trim() !== "" &&
-        codeLines.length > 0
-      ) {
-        const next = lines[i + 1];
-        if (
-          looksLikeImplicitFenceTerminator(next) ||
-          looksLikeProseAfterCodeBlank(next)
-        ) {
-          break;
-        }
       }
       innerRaw.push(line);
       codeLines.push(dedentFenceLine(line, fenceIndent));
