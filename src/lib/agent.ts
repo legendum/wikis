@@ -104,10 +104,7 @@ ${tree}`,
 
   let files: string[] = [];
   try {
-    const cleaned = result.content
-      .replace(/```(?:json)?\n?/g, "")
-      .replace(/```$/g, "")
-      .trim();
+    const cleaned = result.content.trim();
     files = JSON.parse(cleaned);
     if (!Array.isArray(files)) files = [];
     files = files.filter((f) => typeof f === "string");
@@ -834,47 +831,43 @@ ${sourceContext || "(no relevant sources found)"}`,
 export function extractMarkdown(content: string): string | null {
   if (!content.trim()) return null;
 
-  // Strip outer ```markdown ... ``` fences if present
-  const extracted = content
+  // Strip outer fence if present, then sanitize code blocks per heuristic
+  const cleaned = content
     .replace(/^```(?:markdown|md)?\n?/, "")
     .replace(/\n?```$/, "")
     .trim();
 
-  // Ensure all code blocks are properly closed
-  return closeCodeBlocks(extracted);
+  return sanitizeCodeBlocks(cleaned);
 }
 
-function closeCodeBlocks(content: string): string {
+function sanitizeCodeBlocks(content: string): string {
   const lines = content.split("\n");
-  let inCodeBlock = false;
-  let _codeBlockStart = "";
   const result: string[] = [];
+  let inBlock = false;
 
   for (const line of lines) {
-    if (line.startsWith("```")) {
-      if (inCodeBlock) {
-        // Closing a code block
-        if (!line.trim().endsWith("```")) {
-          result.push(`${line}\`\`\``);
-        } else {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("```")) {
+      if (inBlock) {
+        // "```" alone ends; "```lang" starts new (close previous)
+        if (trimmed === "```") {
           result.push(line);
+          inBlock = false;
+        } else {
+          result.push("```");
+          result.push(line);
+          inBlock = true;
         }
-        inCodeBlock = false;
       } else {
-        // Starting a code block
-        inCodeBlock = true;
-        _codeBlockStart = line;
         result.push(line);
+        inBlock = true;
       }
     } else {
       result.push(line);
     }
   }
 
-  // If we're still in a code block at the end, close it
-  if (inCodeBlock) {
-    result.push("```");
-  }
+  if (inBlock) result.push("```");
 
   return result.join("\n");
 }

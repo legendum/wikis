@@ -108,10 +108,7 @@ Rules:
 
   let plan: MergePlan = { merge: [], remove: [] };
   try {
-    const cleaned = result.content
-      .replace(/```(?:json)?\n?/g, "")
-      .replace(/```$/g, "")
-      .trim();
+    const cleaned = result.content.trim();
     plan = JSON.parse(cleaned);
     if (!Array.isArray(plan.merge)) plan.merge = [];
     if (!Array.isArray(plan.remove)) plan.remove = [];
