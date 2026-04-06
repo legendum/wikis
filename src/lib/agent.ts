@@ -831,45 +831,11 @@ ${sourceContext || "(no relevant sources found)"}`,
 export function extractMarkdown(content: string): string | null {
   if (!content.trim()) return null;
 
-  // Strip outer fence if present, then sanitize code blocks per heuristic
-  const cleaned = content
+  // Strip outer fence only (LLM closes all fences properly)
+  return content
     .replace(/^```(?:markdown|md)?\n?/, "")
     .replace(/\n?```$/, "")
     .trim();
-
-  return sanitizeCodeBlocks(cleaned);
-}
-
-function sanitizeCodeBlocks(content: string): string {
-  const lines = content.split("\n");
-  const result: string[] = [];
-  let inBlock = false;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("```")) {
-      if (inBlock) {
-        // "```" alone ends; "```lang" starts new (close previous)
-        if (trimmed === "```") {
-          result.push(line);
-          inBlock = false;
-        } else {
-          result.push("```");
-          result.push(line);
-          inBlock = true;
-        }
-      } else {
-        result.push(line);
-        inBlock = true;
-      }
-    } else {
-      result.push(line);
-    }
-  }
-
-  if (inBlock) result.push("```");
-
-  return result.join("\n");
 }
 
 /** Ask the LLM for a one-line summary of what changed on a page. */
