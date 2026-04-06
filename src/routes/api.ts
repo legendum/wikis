@@ -238,8 +238,11 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
     const pagePath = `${params.path}.md`;
 
-    // Delete from wiki_files and chunks
-    db.prepare("DELETE FROM wiki_files WHERE wiki_id = ? AND path = ?").run(
+    // Mark as deleted instead of removing the record (so we remember not to regenerate it)
+    db.prepare(
+      "UPDATE wiki_files SET deleted = TRUE WHERE wiki_id = ? AND path = ?",
+    ).run(wiki.id, pagePath);
+    db.prepare("DELETE FROM wiki_chunks WHERE wiki_id = ? AND path = ?").run(
       wiki.id,
       pagePath,
     );

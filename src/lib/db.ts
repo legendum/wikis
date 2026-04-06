@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS wiki_files (
     hash TEXT NOT NULL,
     modified_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE(wiki_id, path)
 );
 

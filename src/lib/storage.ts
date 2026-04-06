@@ -49,7 +49,9 @@ export function getFile(
   path: string,
 ): WikiFileRow | null {
   return db
-    .prepare("SELECT * FROM wiki_files WHERE wiki_id = ? AND path = ?")
+    .prepare(
+      "SELECT * FROM wiki_files WHERE wiki_id = ? AND path = ? AND deleted = FALSE",
+    )
     .get(wikiId, path) as WikiFileRow | null;
 }
 
@@ -58,7 +60,9 @@ export function getFile(
  */
 export function listFiles(db: Database, wikiId: number): WikiFileRow[] {
   return db
-    .prepare("SELECT * FROM wiki_files WHERE wiki_id = ? ORDER BY path")
+    .prepare(
+      "SELECT * FROM wiki_files WHERE wiki_id = ? AND deleted = FALSE ORDER BY path",
+    )
     .all(wikiId) as WikiFileRow[];
 }
 
