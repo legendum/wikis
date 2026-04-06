@@ -45,7 +45,7 @@ Start the web server:
 wikis serve
 ```
 
-Open http://localhost:3000 to browse your wiki.
+Open http://localhost:3300 to browse your wiki.
 
 ## CLI Commands
 
