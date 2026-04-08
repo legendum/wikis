@@ -22,9 +22,20 @@ export const USER_CONFIG_DIR = resolve(
 
 // Server config from config/wikis.yml
 const configPath = resolve(CONFIG_DIR, "wikis.yml");
-const rawConfig = existsSync(configPath)
-  ? (yaml.load(readFileSync(configPath, "utf8")) as Record<string, unknown>)
-  : {};
+
+function loadConfig(path: string): Record<string, unknown> {
+  if (!existsSync(path)) return {};
+  const parsed = yaml.load(readFileSync(path, "utf8"));
+  if (parsed === null || parsed === undefined) return {};
+  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      `Invalid config in ${path}: expected a mapping at the top level`,
+    );
+  }
+  return parsed as Record<string, unknown>;
+}
+
+const rawConfig = loadConfig(configPath);
 
 export const PORT = Number(process.env.PORT || rawConfig.port || 3000);
 export const HOST = String(process.env.HOST || rawConfig.host || "0.0.0.0");

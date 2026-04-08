@@ -31,7 +31,6 @@
       },
       "style": {
         "useTemplate": "off",
-        "noNonNullAssertion": "off",
         "noDescendingSpecificity": "off"
       }
     }

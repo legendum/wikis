@@ -112,8 +112,11 @@ Rules:
     plan = JSON.parse(cleaned);
     if (!Array.isArray(plan.merge)) plan.merge = [];
     if (!Array.isArray(plan.remove)) plan.remove = [];
-  } catch {
-    log.warn("Failed to parse consolidation plan", { wiki: config.name });
+  } catch (e) {
+    log.warn("Failed to parse consolidation plan", {
+      wiki: config.name,
+      error: (e as Error).message,
+    });
   }
 
   return { plan, usage: result.usage };

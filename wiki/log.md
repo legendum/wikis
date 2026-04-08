@@ -26,3 +26,7 @@
 ## [2026-04-06 01:16] agent run | manual rebuild
 - Updated: installation.md, cli-commands.md, ai-generation.md, syncing-mechanism.md, search-features.md, self-hosting.md, mcp-integration.md, api-reference.md, authentication.md, database-storage.md, architecture.md, configuration.md
 - Tokens: 402760 in / 21444 out
+
+## [2026-04-06 01:45] agent run | source files changed
+- Updated: installation.md, cli-commands.md, self-hosting.md, mcp-integration.md, configuration.md
+- Tokens: 176837 in / 6953 out

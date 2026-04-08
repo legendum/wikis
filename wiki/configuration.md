@@ -1,8 +1,8 @@
 # Configuration
 
-The "wikis" project employs YAML configuration files at three levels—global user settings, per-wiki parameters, and server operations—to support customization in both hosted and self-hosted deployments. Global settings manage authentication via `account_key` (a Legendum token, format `lak_...`) and sync endpoints (`api_url`) shared across wikis. Per-wiki configurations define `name`, ingestion `sources` and `exclude` globs, optional predefined `sections` for [AI generation](ai-generation.md), and billing overrides like `legendumToken` or `userHasOwnKey`. Server settings configure runtime aspects such as ports, embedding models via Ollama, search parameters, and quotas. Environment variables override sensitive values like API keys for security and portability.
+The "wikis" project uses YAML configuration files across three levels—global user settings, per-wiki parameters, and server operations—to enable customization for both hosted deployments at wikis.fyi and self-hosted instances. This layered approach separates user authentication and syncing (global), wiki-specific ingestion and generation rules (per-wiki), and runtime tuning (server). Environment variables override sensitive fields like API keys, prioritizing security and flexibility.
 
-Configurations integrate deeply with core components. The `WikiConfig` interface, defined in `src/lib/agent.ts`, drives the [AI generation](ai-generation.md) agent and [billing](architecture.md) logic:
+Configurations drive key components. The `WikiConfig` interface in [src/lib/agent.ts](ai-generation.md) informs the [AI generation](ai-generation.md) process and [billing](architecture.md) decisions:
 
 ```typescript
 export interface WikiConfig {
@@ -15,7 +15,9 @@ export interface WikiConfig {
 }
 ```
 
-During agent execution, `billedChat` evaluates billing needs with `config.legendumToken && shouldBill(!!config.userHasOwnKey)`, where `shouldBill` checks hosted mode (`IS_HOSTED`) and absence of user-provided keys. Server constants from `config/wikis.yml`, loaded in `src/lib/constants.ts`, inform the web server, [search features](search-features.md), and indexing:
+During [AI generation](ai-generation.md), `billedChat` checks billing eligibility with `config.legendumToken && shouldBill(!!config.userHasOwnKey)`. The `shouldBill` function from [src/lib/billing.ts](architecture.md) returns true only in hosted mode (`IS_HOSTED`, set when `LEGENDUM_API_KEY` and `LEGENDUM_SECRET` exist) without user-provided keys.
+
+Server constants load from `config/wikis.yml` in [src/lib/constants.ts](architecture.md), with environment precedence:
 
 ```typescript
 const configPath = resolve(CONFIG_DIR, "wikis.yml");
@@ -25,22 +27,24 @@ const rawConfig = existsSync(configPath)
 
 export const PORT = Number(process.env.PORT || rawConfig.port || 3000);
 export const OLLAMA_URL = process.env.OLLAMA_URL || (rawConfig.ollama_url as string) || "http://localhost:11434";
-// ... other derived constants like SEARCH_FTS_WEIGHT
+// Derived constants like SEARCH_FTS_WEIGHT, SEARCH_CHUNK_SIZE
 ```
+
+These integrate with [search features](search-features.md), indexing, and the web server. CLI tools like `wikis init` generate templates, while the daemon detects per-wiki config changes to trigger [syncing](syncing-mechanism.md).
 
 ## Overview
 
-YAML provides human-readable, version-control-friendly configuration. Concerns separate as follows:
+YAML files offer human-readable, Git-friendly configuration. Separation of concerns includes:
 
-- **Global**: `~/.config/wikis/config.yml`—sets `account_key` for [authentication](authentication.md) and billing, and `api_url` for syncing.
-- **Per-wiki**: `wiki/config.yml`—specifies `name`, `sources`, `exclude`, optional `sections`, and billing flags.
-- **Server**: `config/wikis.yml`—defines ports, Ollama settings, search tuning (`search_fts_weight`, `search_chunk_size`), and quotas.
+- **Global**: `~/.config/wikis/config.yml`—holds `account_key` (Legendum token for [authentication](authentication.md) and billing) and `api_url` (sync endpoint).
+- **Per-wiki**: `wiki/config.yml`—defines `name`, `sources`/`exclude` globs for [database storage](database-storage.md), optional `sections` for [AI generation](ai-generation.md), and billing overrides.
+- **Server**: `config/wikis.yml`—sets ports, Ollama for embeddings, [search features](search-features.md) tuning (`search_fts_weight`, `search_chunk_size`), sync intervals, quotas, and costs.
 
-CLI commands like `wikis init` generate templates. The daemon auto-detects per-wiki changes to trigger [syncing](syncing-mechanism.md). Environment variables (e.g., `OPENAI_API_KEY`, `OLLAMA_URL`) take precedence for secrets. In hosted mode, `account_key` enables [authentication](authentication.md); self-hosted mode ([self-hosting.md](self-hosting.md)) skips billing if LLM keys (CLAUDE_API_KEY, etc.) are present, detected in priority order.
+Self-hosted mode ([self-hosting.md](self-hosting.md)) bypasses billing via local LLM keys (detected as `CLAUDE_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY` in priority order). Public wikis use hardcoded defaults, overridable in `config/public-wikis.yml`.
 
 ## Global Configuration
 
-The global file `~/.config/wikis/config.yml` centralizes the Legendum `account_key` for [authentication](authentication.md) and billing across wikis, alongside `api_url` for the sync endpoint. The `wikis login` CLI generates and validates it. Self-hosting overrides `api_url` to `http://localhost:3300/api`. The daemon and CLI reload dynamically, mapping `account_key` to `WikiConfig.legendumToken`.
+The global file at `~/.config/wikis/config.yml` stores the Legendum `account_key` (format `lak_...`) for [authentication](authentication.md) across wikis and `api_url` for the sync endpoint (defaults to hosted service; override to `http://localhost:3300/api` for self-hosting). The `wikis login` CLI generates and stores it, hashing for security in [src/lib/auth.ts](authentication.md). Daemon and CLI reload dynamically.
 
 Example:
 
@@ -51,9 +55,9 @@ api_url: https://wikis.fyi/api  # Server URL for syncing; override for self-host
 
 ## Per-Wiki Configuration
 
-Each wiki's `wiki/config.yml` sets the `name` (for URLs like `wikis.fyi/{name}`), `sources` (globs for ingestion into [database storage](database-storage.md)), `exclude` (skip patterns), optional `sections` (predefined topics guiding agent planning), and billing overrides. The daemon indexes matching files into `source_files`, prompting [AI generation](ai-generation.md) on changes. `wikis init` scaffolds defaults targeting code/docs while excluding noise. Absent `sections` trigger dynamic planning from README and source tree via `planSections` in `agent.ts`.
+Each wiki's `wiki/config.yml` specifies the `name` (used in URLs like `wikis.fyi/{name}`), `sources` (globs for files ingested into [database storage](database-storage.md)), `exclude` (patterns to skip), optional `sections` (predefined topics for [AI generation](ai-generation.md) planning), and billing overrides. The daemon indexes matching files into `source_files`, triggering agent runs on changes. Absent `sections` invoke dynamic planning via `planSections` in `agent.ts`, using README and source tree.
 
-Billing flags bypass charges in self-hosted setups: `legendumToken: null` or `userHasOwnKey: true` (assumes local LLM keys).
+Billing overrides for self-hosted: `legendumToken: null` disables charges; `userHasOwnKey: true` assumes local LLM keys.
 
 Example:
 
@@ -66,7 +70,7 @@ sources:
 exclude:
   - node_modules/**
   - "*.db"
-# Optional predefined sections for AI planning
+# Optional predefined sections
 # sections:
 #   - name: Architecture
 #     description: System design and components
@@ -75,13 +79,13 @@ exclude:
 # userHasOwnKey: true
 ```
 
-The agent loads `WikiConfig` directly; the indexer uses `sources`/`exclude`.
+The [AI agent](ai-generation.md) loads `WikiConfig` directly; indexer applies `sources`/`exclude`.
 
 ## Server Configuration
 
-`config/wikis.yml` tunes the server for ports, providers, search, and quotas. Loaded at startup into `src/lib/constants.ts` constants, with environment precedence (e.g., `PORT=3300`). Hosted mode requires `LEGENDUM_API_KEY`/`LEGENDUM_SECRET`; self-hosted detects LLM keys (CLAUDE, OpenAI, XAI, Gemini first) and skips billing via `IS_HOSTED`.
+`config/wikis.yml` configures runtime behavior, loaded into constants at startup with environment precedence (e.g., `PORT=3300`). Hosted mode activates via `LEGENDUM_API_KEY`/`LEGENDUM_SECRET`; self-hosted detects LLM keys first (Claude, OpenAI, xAI, Gemini) and skips billing.
 
-Ollama generates RAG embeddings ([search-features.md](search-features.md)); FTS5 weights (`search_fts_weight: 0.7`) balance keyword/vector scores.
+Ollama powers RAG embeddings ([search-features.md](search-features.md)); FTS5 tuning balances keyword (`search_fts_weight: 0.7`) and vector scores.
 
 Example:
 
@@ -101,15 +105,16 @@ search_fts_weight: 0.7
 search_vector_weight: 0.3
 search_default_limit: 20
 
-# LLM (self-hosted; first env/config key wins)
-# openai_api_key: sk-...  # Or CLAUDE_API_KEY, etc.
+# Source watching intervals (seconds)
+source_check_min_interval: 300
+source_check_max_interval: 1800
 ```
 
-`wikis serve` requires restart for changes. Integrates with [architecture](architecture.md) and [self-hosting](self-hosting.md).
+Changes require `wikis serve` restart. Integrates with [architecture](architecture.md) and [self-hosting](self-hosting.md).
 
 ## Public Wikis
 
-Public wikis apply hardcoded defaults from `src/lib/public-wikis.ts`: `DEFAULT_SOURCES` (e.g., `src/**/*.ts`, `README.md`) and `DEFAULT_EXCLUDE` (e.g., `node_modules/**`). Overridable via `config/public-wikis.yml` for repo-specific globs/sections. No billing; agent runs with empty `sections` for dynamic planning. The server clones repos, indexes sources, and builds wikis periodically.
+Public wikis use defaults in [src/lib/public-wikis.ts](architecture.md): `DEFAULT_SOURCES` (`src/**/*.ts`, `README.md`, etc.) and `DEFAULT_EXCLUDE` (`node_modules/**`). Override via `config/public-wikis.yml` for custom globs/sections. No billing; empty `sections` enables dynamic planning. Server clones repos, indexes, and runs agent periodically.
 
 Example `config/public-wikis.yml`:
 
@@ -123,6 +128,6 @@ wikis:
 
 ## Managing Configurations
 
-Edit YAML manually for Git compatibility. Daemon/CLI auto-detect changes; `wikis sync` forces sync. Security prioritizes environment variables for keys; account keys hash in storage via `src/lib/auth.ts`. Global/per-wiki tokens enable hosted billing or local bypass per [authentication](authentication.md).
+Edit YAML directly for version control. Daemon auto-reloads per-wiki changes; `wikis sync` forces updates. Environment variables secure keys; account keys hash in [database storage](database-storage.md) via `auth.ts`. Global/per-wiki tokens support hosted billing or local bypass per [authentication](authentication.md).
 
-Configurations form a modular base, unifying agent execution, [database storage](database-storage.md), [search features](search-features.md), and server runtime for secure, adaptable deployments.
+This modular system unifies [AI generation](ai-generation.md), [database storage](database-storage.md), [search features](search-features.md), and runtime for adaptable deployments.

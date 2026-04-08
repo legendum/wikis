@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { type Chunk, chunkText } from "./chunking";
+import { log } from "./log";
 import { embed, serializeEmbedding } from "./rag";
 
 type ChunkTable = "wiki_chunks";
@@ -43,8 +44,12 @@ export async function indexFile(
   if (opts.embeddings !== false) {
     try {
       await storeEmbeddings(db, table, wikiId, path, chunks);
-    } catch {
+    } catch (e) {
       // Ollama not available — FTS still works without embeddings
+      log.debug("Embedding indexing skipped", {
+        path,
+        error: (e as Error).message,
+      });
     }
   }
 

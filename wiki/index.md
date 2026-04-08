@@ -1,6 +1,6 @@
 # wikis
 
-wikis is a personal AI-generated wiki service that uses LLMs to read your project sources and automatically generate structured, interlinked markdown pages in a local `wiki/` folder. A background CLI daemon (`wikis`) watches for file changes, updates the wiki, and syncs it to [wikis.fyi](https://wikis.fyi) for browsing and sharing, with login and billing handled by Legendum. It's local-first, fully self-hostable, and supports features like full-text search with RAG, MCP integration for AI agents, and custom LLM keys.
+wikis is a personal AI-generated wiki service that uses LLMs to automatically create structured, interlinked markdown pages from your project files. A background CLI daemon (`wikis`) watches for changes, maintains a local `wiki/` folder, and optionally syncs to [wikis.fyi](https://wikis.fyi) for browsing and sharing. It's local-first, self-hostable, and features search, MCP integration for AI agents, and Legendum authentication.
 
 ## Pages
 

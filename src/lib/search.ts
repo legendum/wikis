@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { SEARCH_DEFAULT_LIMIT } from "./constants";
+import { log } from "./log";
 import { cosineSimilarity, deserializeEmbedding, embedOne } from "./rag";
 
 export interface SearchResult {
@@ -12,13 +13,6 @@ interface FtsRow {
   path: string;
   content: string;
   rank: number;
-}
-
-interface ChunkRow {
-  id: number;
-  path: string;
-  content: string;
-  embedding: Buffer | null;
 }
 
 /**
@@ -62,37 +56,10 @@ function ftsSearch(
          ORDER BY f.rank LIMIT ?`,
       )
       .all(escaped, wikiId, limit) as FtsRow[];
-  } catch {
+  } catch (e) {
+    log.warn("FTS query failed", { error: (e as Error).message, query });
     return [];
   }
-}
-
-/**
- * Vector search — scans wiki chunk embeddings, ranks by cosine similarity.
- */
-function _vectorSearch(
-  db: Database,
-  wikiId: number,
-  queryEmbedding: Float32Array,
-  limit: number,
-): { path: string; content: string; score: number }[] {
-  const rows = db
-    .prepare(
-      `SELECT id, path, content, embedding FROM wiki_chunks WHERE wiki_id = ? AND embedding IS NOT NULL`,
-    )
-    .all(wikiId) as ChunkRow[];
-
-  return rows
-    .map((row) => ({
-      path: row.path,
-      content: row.content,
-      score: cosineSimilarity(
-        queryEmbedding,
-        deserializeEmbedding(row.embedding || new Uint8Array()),
-      ),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
 }
 
 function normalizeFtsRank(rank: number, maxRank: number): number {
@@ -121,8 +88,11 @@ export async function search(
   let queryEmbedding: Float32Array | null = null;
   try {
     queryEmbedding = await embedOne(query);
-  } catch {
+  } catch (e) {
     // Ollama unavailable — fall back to FTS rank order
+    log.debug("Embedding failed, FTS-only search", {
+      error: (e as Error).message,
+    });
   }
 
   if (!queryEmbedding) {

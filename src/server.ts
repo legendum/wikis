@@ -6,6 +6,7 @@ import {
   PORT,
   PUBLIC_DIR,
 } from "./lib/constants";
+import { log } from "./lib/log";
 import { apiRoutes } from "./routes/api";
 import { authRoutes } from "./routes/auth";
 import { webRoutes } from "./routes/web";
@@ -33,6 +34,6 @@ const app = new Elysia()
   .use(webRoutes)
   .listen({ port: PORT, hostname: HOST });
 
-console.log(`wikis.fyi running at http://${HOST}:${PORT}`);
+log.info(`wikis.fyi running at http://${HOST}:${PORT}`);
 
 export { app };

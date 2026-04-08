@@ -7,10 +7,37 @@ import {
 } from "../lib/auth";
 import { createUser, getPublicDb, getUserByEmail, getUserDb } from "../lib/db";
 import { indexFile } from "../lib/indexer";
+import { log } from "../lib/log";
 import { handleMcpRequest } from "../lib/mcp";
 import { search } from "../lib/search";
 import { getFile, getManifest, hashContent, upsertFile } from "../lib/storage";
 import { diffManifests, type Manifest } from "../lib/sync";
+
+/** Assert body is a non-null object. */
+function asObject(body: unknown): Record<string, unknown> {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("Invalid request body: expected JSON object");
+  }
+  return body as Record<string, unknown>;
+}
+
+/** Assert key is a non-empty string on body. */
+function requireString(body: Record<string, unknown>, key: string): string {
+  const v = body[key];
+  if (typeof v !== "string" || v.length === 0) {
+    throw new Error(`Invalid request: '${key}' must be a non-empty string`);
+  }
+  return v;
+}
+
+/** Assert key is an array on body. */
+function requireArray(body: Record<string, unknown>, key: string): unknown[] {
+  const v = body[key];
+  if (!Array.isArray(v)) {
+    throw new Error(`Invalid request: '${key}' must be an array`);
+  }
+  return v;
+}
 
 /**
  * Auth middleware — extracts user from account key.
@@ -31,10 +58,12 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
   .post("/sync", async ({ body, headers }) => {
     const { db } = authGuard(headers);
-    const { wiki: wikiName, files: localManifest } = body as {
-      wiki: string;
-      files: Manifest;
-    };
+    const b = asObject(body);
+    const wikiName = requireString(b, "wiki");
+    const localManifest = b.files as Manifest;
+    if (!localManifest || typeof localManifest !== "object") {
+      throw new Error("Invalid request: 'files' must be a manifest object");
+    }
 
     // Get or create wiki
     let wiki = db
@@ -55,10 +84,13 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
   .post("/push", async ({ body, headers }) => {
     const { db } = authGuard(headers);
-    const { wiki: wikiName, files } = body as {
-      wiki: string;
-      files: { path: string; content: string; modified: string }[];
-    };
+    const b = asObject(body);
+    const wikiName = requireString(b, "wiki");
+    const files = requireArray(b, "files") as {
+      path: string;
+      content: string;
+      modified: string;
+    }[];
 
     const wiki = db
       .prepare("SELECT id FROM wikis WHERE name = ?")
@@ -78,10 +110,9 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
   .post("/pull", async ({ body, headers }) => {
     const { db } = authGuard(headers);
-    const { wiki: wikiName, paths } = body as {
-      wiki: string;
-      paths: string[];
-    };
+    const b = asObject(body);
+    const wikiName = requireString(b, "wiki");
+    const paths = requireArray(b, "paths") as string[];
 
     const wiki = db
       .prepare("SELECT id FROM wikis WHERE name = ?")
@@ -106,10 +137,12 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   .post("/sources", async ({ body, headers }) => {
     try {
       const { user, db } = authGuard(headers);
-      const { wiki: wikiName, files } = body as {
-        wiki: string;
-        files: { path: string; content: string }[];
-      };
+      const b = asObject(body);
+      const wikiName = requireString(b, "wiki");
+      const files = requireArray(b, "files") as {
+        path: string;
+        content: string;
+      }[];
 
       const wiki = db
         .prepare("SELECT id FROM wikis WHERE name = ?")
@@ -173,7 +206,7 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
         },
       };
     } catch (e) {
-      console.error("Sources endpoint error:", e);
+      log.error("Sources endpoint error", { error: (e as Error).message });
       return { ok: false, error: "internal_error" };
     }
   })
@@ -312,7 +345,9 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
 
   .post("/rebuild", async ({ body, headers }) => {
     const { user, db } = authGuard(headers);
-    const { wiki: wikiName, force } = body as { wiki: string; force?: boolean };
+    const b = asObject(body);
+    const wikiName = requireString(b, "wiki");
+    const force = Boolean(b.force);
 
     const wiki = db
       .prepare("SELECT id FROM wikis WHERE name = ?")
@@ -345,8 +380,9 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   // --- Login (register account key) ---
 
   .post("/login", async ({ body }) => {
-    const { key } = body as { key: string };
-    if (!key?.startsWith("lak_")) {
+    const b = asObject(body);
+    const key = requireString(b, "key");
+    if (!key.startsWith("lak_")) {
       return {
         ok: false,
         error: "invalid_key",

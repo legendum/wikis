@@ -79,5 +79,11 @@ if (!COMMANDS[command]) {
   process.exit(1);
 }
 
-const { default: handler } = await import(`./commands/${command}.ts`);
-await handler(args.slice(1));
+try {
+  const { default: handler } = await import(`./commands/${command}.ts`);
+  await handler(args.slice(1));
+} catch (e) {
+  console.error(`Failed to run '${command}': ${(e as Error).message}`);
+  if (process.env.DEBUG) console.error((e as Error).stack);
+  process.exit(1);
+}
