@@ -10,8 +10,8 @@ const COMMANDS: Record<string, { description: string; usage?: string }> = {
   },
   list: { description: "List registered projects", usage: "wikis list" },
   open: {
-    description: "Serve the local wiki/ folder and open it in a browser",
-    usage: "wikis open",
+    description: "Serve a local wiki folder and open it in a browser",
+    usage: "wikis open [folder]",
   },
   login: {
     description: "Authenticate with Legendum",

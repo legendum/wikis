@@ -7,7 +7,7 @@
  * static-feeling preview server for editing wiki pages locally.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { highlightCodeBlocks, PRISM_THEME_CSS } from "../../src/lib/highlight";
 import { renderMarkdown } from "../../src/lib/render";
 
@@ -61,11 +61,24 @@ function notFound(slug: string): Response {
   );
 }
 
-export default async function open(_args: string[]) {
-  const wikiDir = resolve(process.cwd(), "wiki");
+export default async function open(args: string[]) {
+  const cwd = process.cwd();
+  // Resolve the wiki folder:
+  //   1. explicit arg → use it
+  //   2. ./<arg-or-"wiki"> exists → use it
+  //   3. otherwise assume we're already inside a wiki folder → use cwd
+  const argDir = args[0];
+  let wikiDir: string;
+  if (argDir) {
+    wikiDir = resolve(cwd, argDir);
+  } else if (existsSync(resolve(cwd, "wiki"))) {
+    wikiDir = resolve(cwd, "wiki");
+  } else {
+    wikiDir = cwd;
+  }
   if (!existsSync(wikiDir)) {
     console.error(
-      "No wiki/ folder in the current directory. Run `wikis init` first.",
+      `No ${basename(wikiDir)}/ folder found. Run \`wikis init\` first.`,
     );
     process.exit(1);
   }
