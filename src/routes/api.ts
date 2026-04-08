@@ -5,10 +5,17 @@ import {
   storeAccountKey,
   validateAccountKey,
 } from "../lib/auth";
-import { createUser, getPublicDb, getUserByEmail, getUserDb } from "../lib/db";
+import {
+  createUser,
+  ensureLocalUser,
+  getPublicDb,
+  getUserByEmail,
+  getUserDb,
+} from "../lib/db";
 import { indexFile } from "../lib/indexer";
 import { log } from "../lib/log";
 import { handleMcpRequest } from "../lib/mcp";
+import { isSelfHosted, LOCAL_USER_EMAIL, LOCAL_USER_ID } from "../lib/mode";
 import { search } from "../lib/search";
 import { getFile, getManifest, hashContent, upsertFile } from "../lib/storage";
 import { diffManifests, type Manifest } from "../lib/sync";
@@ -43,6 +50,19 @@ function requireArray(body: Record<string, unknown>, key: string): unknown[] {
  * Auth middleware — extracts user from account key.
  */
 function authGuard(headers: Record<string, string | undefined>) {
+  // Self-hosted mode: no auth, single local user owns everything.
+  if (isSelfHosted()) {
+    ensureLocalUser();
+    return {
+      user: {
+        id: LOCAL_USER_ID,
+        email: LOCAL_USER_EMAIL,
+        legendum_token: null as string | null,
+      },
+      db: getUserDb(LOCAL_USER_ID),
+    };
+  }
+
   const token = extractBearerToken(headers.authorization);
   if (!token) throw new Error("Missing Authorization header");
 
@@ -380,6 +400,13 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   // --- Login (register account key) ---
 
   .post("/login", async ({ body }) => {
+    // Self-hosted mode: there is no Legendum to validate against, and the
+    // local user owns everything regardless of what key was sent.
+    if (isSelfHosted()) {
+      ensureLocalUser();
+      return { ok: true, data: { email: LOCAL_USER_EMAIL } };
+    }
+
     const b = asObject(body);
     const key = requireString(b, "key");
     if (!key.startsWith("lak_")) {
@@ -436,13 +463,19 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
   // --- MCP server ---
 
   .post("/mcp", async ({ body, headers }) => {
-    // MCP supports both authenticated (user wikis) and public wikis
-    const token = extractBearerToken(headers.authorization);
+    // MCP supports both authenticated (user wikis) and public wikis.
+    // In self-hosted mode the local user db is the only "authenticated" db.
     let db: Database;
-    if (token) {
-      const user = validateAccountKey(token);
-      if (user) {
-        db = getUserDb(user.id);
+    if (isSelfHosted()) {
+      ensureLocalUser();
+      db = getUserDb(LOCAL_USER_ID);
+    } else {
+      const token = extractBearerToken(headers.authorization);
+      if (token) {
+        const user = validateAccountKey(token);
+        if (user) {
+          db = getUserDb(user.id);
+        }
       }
     }
     // Fall back to public DB

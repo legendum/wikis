@@ -116,8 +116,10 @@ async function syncProject(
   config: WikiConfig,
 ): Promise<boolean> {
   const apiUrl = getApiUrl();
-  const accountKey = getAccountKey();
-  if (!accountKey) return false;
+  // In self-hosted mode no account key is needed; the server ignores the
+  // bearer entirely. Send a harmless placeholder so hosted servers still
+  // reject the request with a clear error rather than us silently bailing.
+  const accountKey = getAccountKey() || "self-hosted";
 
   const headers = {
     "Content-Type": "application/json",

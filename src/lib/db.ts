@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DATA_DIR } from "./constants";
+import { LOCAL_USER_EMAIL, LOCAL_USER_ID } from "./mode";
 
 // --- Global database: user registry ---
 
@@ -181,6 +182,21 @@ export function createUser(email: string): number {
   getUserDb(userId.id);
 
   return userId.id;
+}
+
+/**
+ * Ensure the well-known local user (id 0) exists in the global db.
+ * Used in self-hosted mode where there is no signup/login flow — every
+ * request is implicitly authorized as this single user. Idempotent.
+ */
+export function ensureLocalUser(): { id: number; email: string } {
+  const db = getGlobalDb();
+  db.prepare(
+    "INSERT OR IGNORE INTO users (id, email, db_path) VALUES (?, ?, ?)",
+  ).run(LOCAL_USER_ID, LOCAL_USER_EMAIL, `data/user${LOCAL_USER_ID}.db`);
+  // Make sure the per-user db file exists with its schema applied.
+  getUserDb(LOCAL_USER_ID);
+  return { id: LOCAL_USER_ID, email: LOCAL_USER_EMAIL };
 }
 
 export function getUserByEmail(email: string) {
