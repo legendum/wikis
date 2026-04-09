@@ -1,0 +1,86 @@
+# wikis.fyi
+
+wikis.fyi is a personal AI-generated wiki service. A background CLI (`wikis`) watches your project files, maintains a local `wiki/` folder of interlinked markdown pages, and syncs it to wikis.fyi for browsing and sharing. Login, linking, and billing are handled by Legendum.
+
+The **server** runs all LLM work: the local daemon watches sources, sends changed source files to the server with `POST /api/sources`, and syncs wiki markdown via `POST /api/sync` (manifest) plus push/pull. Wiki pages are what readers browse; source files are stored server-side for the LLM agent and are not exposed as wiki content.
+
+Self-hostable: the same codebase runs at wikis.fyi and locally via `wikis serve`.
+
+## Key concepts
+
+- **Wiki**: A `wiki/` directory in a project: `config.yml`, `index.md`, `log.md`, and flat `*.md` pages. The LLM owns content — it creates pages, updates them when sources change, and maintains cross-references.
+- **Sources**: Glob patterns in `wiki/config.yml` pointing at project files the LLM reads. Changed sources are pushed to the server (`POST /api/sources`) for ingestion; they are not part of the wiki **file manifest** (that exchange is wiki markdown only).
+- **Sync**: Bi-directional manifest exchange (`POST /api/sync`), then push/pull of wiki files. Per-file last-write-wins; conflicts get a `.conflict.md` sidecar.
+- **Daemon**: `wikis start` — watches sources with exponential backoff (5 min → 30 min cap), pushes diffs, syncs wiki updates. Does not call LLMs locally.
+- **Search**: Wiki chunks only — FTS5 (BM25) plus optional RAG re-ranking via Ollama embeddings (`all-minilm` by default). Falls back to FTS if Ollama is unavailable.
+- **MCP**: HTTP MCP at `/mcp` — `search_wiki`, `read_page`, `list_pages` for agents. Config stub in `wiki/mcp.json` after `wikis init`.
+- **Public wikis**: Wikis can be listed publicly; search and MCP can target public wikis where configured.
+
+## URLs
+
+- Full specification (architecture, sync protocol, billing): https://github.com/legendum/wikis/blob/main/docs/SPEC.md
+- This file (plain text for LLMs): https://wikis.fyi/public/llms.txt — same path on a self-hosted instance, e.g. http://localhost:3300/public/llms.txt (port from `config/wikis.yml` or `PORT`).
+
+## CLI quick reference
+
+```
+wikis init                         Register project: create wiki/ + config.yml, start first build
+wikis serve                        Run full server locally (default port 3300 with bundled config, or PORT)
+wikis start | stop | status        Background daemon
+wikis sync [--all]                 Manual sync (current project or all registered)
+wikis search <query>               Search wiki pages (CLI)
+wikis login [--key lak_...]        Legendum OAuth or account key
+wikis list                         Registered projects
+wikis remove                       Unregister current project (does not delete wiki/)
+wikis open [folder]                Local markdown preview only (http://localhost:3456) — no DB, no sync
+wikis rebuild [--force]            Ask server to regenerate wiki pages
+wikis delete <page>                Delete a wiki page locally and on server
+wikis update                       Update CLI to latest (install.sh flow)
+```
+
+Install: `curl -fsSL https://wikis.fyi/public/install.sh | sh` — installs Bun if needed, clones to `~/.config/wikis/src`, `bun link` for global `wikis`.
+
+## API quick reference
+
+Base URL: `https://wikis.fyi/api` (or `http://localhost:<port>/api` for self-hosted)
+
+Auth: `Authorization: Bearer lak_...` (Legendum account key). Self-hosted mode uses a single local user without Legendum when configured accordingly.
+
+POST   /api/sync                     Body: `wiki`, `files` manifest — returns push/pull/conflict hints
+POST   /api/push                     Push wiki file content
+POST   /api/pull                     Pull wiki file content
+POST   /api/sources                  Push changed source files for server-side wiki regeneration
+GET    /api/search/:wiki?q=...      Search (FTS + optional RAG)
+GET    /api/wikis                    List wikis
+DELETE /api/wikis/:name              Delete wiki
+DELETE /api/wikis/:name/pages/:path Delete page
+GET    /api/usage                    Usage / billing period stats
+POST   /api/rebuild                  Trigger wiki rebuild on server
+POST   /api/login                    CLI/session login helpers (see server)
+POST   /api/mcp                      MCP JSON-RPC (same tools as MCP clients)
+
+GET    /health                       `{ ok: true }`
+GET    /public/*                     Static files (install.sh, style.css, images, this file)
+
+Browser OAuth: `GET /login`, `GET /auth/callback`, `POST /auth/logout` (hosted Legendum flow).
+
+## Global config
+
+`~/.config/wikis/config.yml`:
+
+```yaml
+account_key: lak_...
+api_url: https://wikis.fyi/api   # override for self-hosted
+```
+
+## Self-hosting
+
+Set one or more LLM API keys (e.g. `OPENAI_API_KEY`, `CLAUDE_API_KEY`, `XAI_API_KEY`) and run `wikis serve`. Default models are defined in the server; Ollama optional for embeddings.
+
+## Billing (hosted)
+
+Legendum credits (Ⱡ): metered source pushes, LLM wiki updates, and per-wiki storage. Reads, pulls, and self-hosted use are outside that meter. See SPEC.md for quotas and error shape (`insufficient_credits`).
+
+## Machine-readable docs
+
+This file is the canonical short overview for LLM context. For protocol and implementation detail, use `docs/SPEC.md` in the repository.

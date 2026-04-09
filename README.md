@@ -6,6 +6,8 @@ wikis.fyi is a personal AI-generated wiki service. A background CLI (`wikis`) wa
 
 **📖 Live Wiki**: The complete AI-generated documentation for this project is available in the [`wiki/`](wiki/) directory (see [`wiki/index.md`](wiki/index.md)).
 
+**Machine-readable overview** (for LLM clients and assistants): [wikis.fyi/public/llms.txt](https://wikis.fyi/public/llms.txt) — same path when self-hosting (`/public/llms.txt`).
+
 Self-hostable: the same codebase runs at wikis.fyi and locally via `wikis serve`.
 
 ## Features
@@ -45,24 +47,38 @@ Start the web server:
 wikis serve
 ```
 
-Open http://localhost:3300 to browse your wiki.
+Open http://localhost:3300 to browse your wiki (default port from `config/wikis.yml`; override with `PORT`).
+
+### Preview wiki files offline
+
+To render the local `wiki/` folder as HTML without running the full app or syncing:
+
+```bash
+wikis open
+```
+
+Serves at http://localhost:3456 — useful for quick local editing; no database or authentication.
 
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
 | `wikis init` | Initialize a wiki in the current project |
-| `wikis serve` | Start the web server |
+| `wikis serve` | Run the full wikis.fyi server locally (self-host) |
 | `wikis start` | Start the background daemon |
 | `wikis stop` | Stop the background daemon |
 | `wikis status` | Show daemon and project status |
-| `wikis sync` | Push sources and pull wiki pages |
+| `wikis sync` | Sync wiki files with the server (`--all` for every registered project) |
 | `wikis search <query>` | Search wiki pages |
+| `wikis open [folder]` | Serve local markdown as HTML (preview only) |
+| `wikis rebuild` | Regenerate wiki pages on the server (`--force` for full rebuild) |
+| `wikis delete <page>` | Delete a page locally and on the server |
 | `wikis login` | Authenticate with Legendum |
 | `wikis list` | List registered projects |
 | `wikis remove` | Unregister the current project |
+| `wikis update` | Update the `wikis` CLI to the latest version |
 
-Run `wikis --help` for full usage.
+Run `wikis --help` for full usage; `wikis <command> --help` for a specific command.
 
 ## Project Structure
 
