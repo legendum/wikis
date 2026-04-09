@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { Elysia } from "elysia";
 import {
   CONTENT_TYPE_MARKDOWN_UTF8,
@@ -11,8 +12,19 @@ import { apiRoutes } from "./routes/api";
 import { authRoutes } from "./routes/auth";
 import { webRoutes } from "./routes/web";
 
+const LLMS_TXT = `${PUBLIC_DIR}/llms.txt`;
+
 const app = new Elysia()
   .get("/health", () => ({ ok: true }))
+  .get("/llms.txt", ({ set }) => {
+    if (!existsSync(LLMS_TXT)) {
+      set.status = 404;
+      return "Not found";
+    }
+    return new Response(Bun.file(LLMS_TXT), {
+      headers: { "Content-Type": CONTENT_TYPE_TEXT_UTF8 },
+    });
+  })
   .get("/public/*", ({ params }) => {
     const path = `${PUBLIC_DIR}/${params["*"]}`;
     const file = Bun.file(path);

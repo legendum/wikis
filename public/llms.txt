@@ -19,7 +19,7 @@ Self-hostable: the same codebase runs at wikis.fyi and locally via `wikis serve`
 ## URLs
 
 - Full specification (architecture, sync protocol, billing): https://github.com/legendum/wikis/blob/main/docs/SPEC.md
-- This file (plain text for LLMs): https://wikis.fyi/public/llms.txt — same path on a self-hosted instance, e.g. http://localhost:3300/public/llms.txt (port from `config/wikis.yml` or `PORT`).
+- This file (plain text for LLMs): https://wikis.fyi/llms.txt — mirror: https://wikis.fyi/public/llms.txt — on self-hosted, http://localhost:3300/llms.txt (port from `config/wikis.yml` or `PORT`).
 
 ## CLI quick reference
 
@@ -60,7 +60,8 @@ POST   /api/login                    CLI/session login helpers (see server)
 POST   /api/mcp                      MCP JSON-RPC (same tools as MCP clients)
 
 GET    /health                       `{ ok: true }`
-GET    /public/*                     Static files (install.sh, style.css, images, this file)
+GET    /llms.txt                     Same body as `public/llms.txt` (plain text for LLMs)
+GET    /public/*                     Static files (install.sh, style.css, images, llms.txt, …)
 
 Browser OAuth: `GET /login`, `GET /auth/callback`, `POST /auth/logout` (hosted Legendum flow).
 

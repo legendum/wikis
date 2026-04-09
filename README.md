@@ -6,7 +6,7 @@ wikis.fyi is a personal AI-generated wiki service. A background CLI (`wikis`) wa
 
 **📖 Live Wiki**: The complete AI-generated documentation for this project is available in the [`wiki/`](wiki/) directory (see [`wiki/index.md`](wiki/index.md)).
 
-**Machine-readable overview** (for LLM clients and assistants): [wikis.fyi/public/llms.txt](https://wikis.fyi/public/llms.txt) — same path when self-hosting (`/public/llms.txt`).
+**Machine-readable overview** (for LLM clients and assistants): [wikis.fyi/llms.txt](https://wikis.fyi/llms.txt) — also available at `/public/llms.txt` when self-hosting.
 
 Self-hostable: the same codebase runs at wikis.fyi and locally via `wikis serve`.
 
