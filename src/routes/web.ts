@@ -15,7 +15,7 @@ import { highlightCodeBlocks, PRISM_THEME_CSS } from "../lib/highlight";
 import { isSelfHosted, LOCAL_USER_ID } from "../lib/mode";
 import { escapeHtml, renderMarkdown } from "../lib/render";
 import { search } from "../lib/search";
-import { getFile, getPageUpdates } from "../lib/storage";
+import { getFile, getPageUpdates, listFiles } from "../lib/storage";
 import { getSessionUser } from "./auth";
 
 /* renderMarkdown / escapeHtml live in src/lib/render.ts so the CLI can
@@ -105,6 +105,16 @@ function htmlPage(title: string, body: string, opts: PageOpts = {}): string {
     });
     document.addEventListener('click', function(e){
       if (!e.target.closest('.search')) box.hidden = true;
+    });
+  })();
+  (function(){
+    var picker = document.querySelector('.js-page-select');
+    if (!picker) return;
+    picker.addEventListener('change', function(){
+      var href = picker.value;
+      if (href && href !== location.pathname) {
+        location.assign(href);
+      }
     });
   })();
   </script>
@@ -339,15 +349,35 @@ async function serveWikiPage(
 
   // Render HTML
   const pageSlug = file.path.replace(".md", "");
-  const pageTitle = pageSlug
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-  const projectTitle = project.charAt(0).toUpperCase() + project.slice(1);
+  const pageTitle = titleFromSlug(pageSlug);
   const isIndex = file.path === "index.md";
-  const nav = isIndex
-    ? ` / <strong>${projectTitle}</strong>`
-    : ` / <a href="/${project}">${projectTitle}</a> / <strong>${pageTitle}</strong>`;
-  const title = isIndex ? projectTitle : `${projectTitle} / ${pageTitle}`;
+  const pages = listFiles(db, wiki.id)
+    .filter((f) => f.path.endsWith(".md"))
+    .map((f) => {
+      const slug = f.path.replace(/\.md$/, "");
+      return {
+        slug,
+        title: slug === "index" ? "Index" : titleFromSlug(slug),
+        href: slug === "index" ? `/${project}` : `/${project}/${slug}`,
+      };
+    })
+    .sort((a, b) => {
+      if (a.slug === "index" && b.slug !== "index") return -1;
+      if (b.slug === "index" && a.slug !== "index") return 1;
+      if (a.slug === "log" && b.slug !== "log") return 1;
+      if (b.slug === "log" && a.slug !== "log") return -1;
+      return a.title.localeCompare(b.title);
+    });
+  const currentHref = isIndex ? `/${project}` : `/${project}/${pageSlug}`;
+  const options = pages
+    .map(
+      (p) =>
+        `<option value="${escapeHtml(p.href)}"${p.href === currentHref ? " selected" : ""}>${escapeHtml(p.title)}</option>`,
+    )
+    .join("");
+  const pickerId = `page-picker-${project.replace(/[^a-zA-Z0-9_-]/g, "") || "wiki"}`;
+  const nav = ` / <a href="/${project}">${escapeHtml(project)}</a> / <span class="page-picker"><label class="sr-only" for="${pickerId}">Choose page</label><select id="${pickerId}" class="js-page-select" aria-label="Choose page">${options}</select></span>`;
+  const title = isIndex ? project : `${project} / ${pageTitle}`;
   const body = highlightCodeBlocks(renderMarkdown(file.content, project));
   const updates = getPageUpdates(db, wiki.id, filePath);
   const updatesHtml =
@@ -358,6 +388,10 @@ async function serveWikiPage(
     htmlPage(title, body + updatesHtml, { nav, loggedIn, balance }),
     { headers: { "Content-Type": "text/html" } },
   );
+}
+
+function titleFromSlug(slug: string): string {
+  return slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Truncate plain text for search result snippets. */

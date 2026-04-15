@@ -31,6 +31,33 @@ header nav > span {
   min-width: 0;
 }
 
+header nav .page-picker select {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.15rem 0.25rem;
+  width: auto;
+  background: white;
+}
+
+header nav .page-picker select:focus {
+  outline: none;
+  border-color: #0066cc;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 header nav .login {
   display: inline-flex;
   align-items: center;
