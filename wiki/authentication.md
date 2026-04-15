@@ -2,25 +2,25 @@
 
 ## Overview
 
-The "wikis" project secures access to user-specific wikis and protected APIs through Bearer token authentication using account keys (`lak_...`) or cookie-based sessions. Protected endpoints include syncing sources (`POST /api/sources`), pushing wiki files (`POST /api/push`), pulling files (`POST /api/pull`), searching private wikis (`GET /api/search/:wiki`), listing wikis (`GET /api/wikis`), and regenerating content (`POST /api/rebuild`). Public endpoints such as static assets (`/public/*`), health checks (`/health`), and the MCP server (`POST /mcp`) require no authentication and default to the public database (`data/public.db`).
+The "wikis" project secures access to user-specific wikis and protected APIs through Bearer token authentication using account keys (`lak_...`) or cookie-based sessions. Protected endpoints require authentication and operate on per-user databases (`data/user{id}.db`). These include syncing sources (`POST /api/sources`), pushing wiki files (`POST /api/push`), pulling files (`POST /api/pull`), searching private wikis (`GET /api/search/:wiki`), listing wikis (`GET /api/wikis`), usage reporting (`GET /api/usage`), wiki management (`DELETE /api/wikis/:name`, `DELETE /api/wikis/:name/pages/:path`), and regeneration (`POST /api/rebuild`). Public endpoints such as static assets (`/public/*`, including `/llms.txt`), health checks (`/health`), and the MCP server (`POST /mcp`) require no authentication and default to the public database (`data/public.db`).
 
-Authentication integrates with Legendum for identity and billing verification in hosted mode. The system supports account keys for CLI, API, and agent access, and OAuth-based sessions for web browsers. Credentials reside in a global SQLite database (`data/wikis.db`), while per-user data isolates in `data/user{id}.db` databases, referenced by user IDs from the global database ([database-storage.md](database-storage.md)). Legendum manages external identity and billing; the project handles local validation, account key hashing, and session management.
+Authentication integrates with Legendum for identity and billing verification in hosted mode ([self-hosting.md](self-hosting.md)). The system supports account keys for CLI ([cli-commands.md](cli-commands.md)), API ([api-reference.md](api-reference.md)), and agent access, and OAuth-based sessions for web browsers. Credentials reside in a global SQLite database (`data/wikis.db`), while per-user data isolates in `data/user{id}.db` databases, referenced by user IDs from the global database ([database-storage.md](database-storage.md)). Legendum manages external identity and billing; the project handles local validation, account key hashing, and session management.
 
-Self-hosting employs the same mechanisms but bypasses Legendum validation and billing if `LEGENDUM_API_KEY` and `LEGENDUM_SECRET` are absent, defaulting to a single local user ([self-hosting.md](self-hosting.md)).
+Self-hosting employs the same mechanisms but bypasses Legendum validation and billing if `LEGENDUM_API_KEY` and `LEGENDUM_SECRET` are absent, defaulting to a single local user (`id: 0`, email: `local@example.com`).
 
 ## Key Concepts
 
 The project uses three authentication mechanisms:
 
-- **Account keys** (`lak_...`): Long-lived tokens for CLI ([cli-commands.md](cli-commands.md)), API ([api-reference.md](api-reference.md)), and agent access. Hashed and stored in the global database for local validation.
-- **OAuth sessions**: Short-lived, httpOnly cookies issued via Legendum OAuth for web access, stored in the `sessions` table.
+- **Account keys** (`lak_...`): Long-lived tokens for CLI, API, and agent access. Hashed with SHA-256 and stored in the global database's `account_keys` table for local validation.
+- **OAuth sessions**: Short-lived, httpOnly cookies (`wikis_session`) issued via Legendum OAuth for web access, stored in the global database's `sessions` table (expire after 30 days).
 - **Public fallback**: No credentials needed for public wikis and MCP tools, using `data/public.db`.
 
-User resolution prioritizes Bearer tokens for APIs, then session cookies, then account key cookies for web routes. Self-hosted mode treats all requests as the local user without checks.
+User resolution prioritizes Bearer tokens (account keys), then session cookies (`wikis_session`), then account key cookies (`wikis_token`) for web routes. Self-hosted mode treats all requests as the local user without checks. The MCP endpoint optionally accepts Bearer tokens to access user databases; otherwise, it falls back to public.
 
 ## Account Keys
 
-Account keys enable secure token-based access. Users generate keys via Legendum and register them through `POST /api/login`.
+Account keys enable secure token-based access. Users generate keys via Legendum and register them through `POST /api/login`, which validates against Legendum (hosted mode) or stores hashes locally (self-hosted).
 
 ```typescript
 // src/routes/api.ts — /api/login endpoint
@@ -85,7 +85,7 @@ Account keys enable secure token-based access. Users generate keys via Legendum 
 })
 ```
 
-Keys hash via SHA-256 and store in the `account_keys` table with the user ID:
+Keys hash via SHA-256 and store in the `account_keys` table with the user ID, prefix, and label:
 
 ```typescript
 // src/lib/auth.ts
@@ -111,7 +111,7 @@ export function storeAccountKey(userId: number, key: string): void {
 }
 ```
 
-API middleware validates Bearer tokens:
+API middleware (`authGuard`) validates Bearer tokens and returns the user and database:
 
 ```typescript
 // src/routes/api.ts — authGuard
@@ -141,10 +141,10 @@ function authGuard(headers: Record<string, string | undefined>) {
 
 ## Web Sessions (OAuth)
 
-Web access relies on cookie-based sessions via Legendum OAuth. The `/login` route redirects to Legendum; `/auth/callback` exchanges the code, creates a session, and sets a cookie.
+Web access relies on cookie-based sessions via Legendum OAuth. The `/login` route (GET) redirects to Legendum; `/auth/callback` exchanges the code, creates a session token, stores it in the `sessions` table, and sets the `wikis_session` cookie. A short-lived `wikis_state` cookie prevents CSRF.
 
 ```typescript
-// src/routes/auth.ts — /login and /auth/callback
+// src/routes/auth.ts — /login
 .get("/login", async ({ cookie: { wikis_state }, redirect, set }) => {
   const client = getClient();
   if (!client) {
@@ -170,6 +170,7 @@ Web access relies on cookie-based sessions via Legendum OAuth. The `/login` rout
   return redirect(url);
 })
 
+// src/routes/auth.ts — /auth/callback
 .get("/auth/callback", async ({
   query,
   cookie: { wikis_session, wikis_state },
@@ -232,7 +233,7 @@ export function getSessionUser(token: string): number | null {
 }
 ```
 
-Web routes resolve users from headers and cookies:
+Web routes resolve users via `resolveUser`, which checks Bearer, `wikis_session`, then `wikis_token`:
 
 ```typescript
 // src/routes/web.ts — resolveUser
@@ -262,11 +263,11 @@ function resolveUser(headers: Record<string, string | undefined>): { id: number 
 }
 ```
 
-Logout deletes the session via `POST /auth/logout`.
+Logout (`POST /auth/logout`) deletes the session token from the database and removes the cookie.
 
 ## Public Access and Fallback
 
-Public wikis reside in `data/public.db`. Web routes query the user database first, then public. The MCP endpoint (`POST /mcp`) uses an authenticated database if a token provides one, otherwise public:
+Public wikis reside in `data/public.db`. Web routes query the user database first (if resolved), then public. The MCP endpoint (`POST /mcp`) uses an authenticated database if a Bearer token provides one, otherwise public:
 
 ```typescript
 // src/routes/api.ts — /mcp
@@ -295,4 +296,4 @@ Details appear in [mcp-integration.md](mcp-integration.md).
 
 ## Self-Hosting Considerations
 
-Self-hosted mode (`wikis serve`) activates without Legendum credentials. The `authGuard` and `resolveUser` return the local user (`id: 0`, `LOCAL_USER_EMAIL: "local@example.com"`) for all requests, bypassing token checks. Account keys validate locally via hashing without external calls. OAuth skips if unconfigured. Users supply LLM keys directly ([configuration.md](configuration.md)), avoiding billing ([self-hosting.md](self-hosting.md)).
+Self-hosted mode (`wikis serve`) activates without Legendum credentials. Functions like `authGuard` and `resolveUser` return the local user for all requests, bypassing token checks. Account keys validate locally via hashing without external calls. OAuth skips if unconfigured (`getClient()` returns null). Users supply LLM keys directly ([configuration.md](configuration.md)), avoiding billing.

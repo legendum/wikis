@@ -1,10 +1,10 @@
 # Installation
 
-The "wikis" project provides a CLI tool for managing personal AI-generated wikis. This page outlines the steps to install and set up the CLI, which enables watching project files, generating wiki pages via AI agents, and syncing with a server. The installation process prioritizes simplicity and cross-platform compatibility on macOS, Linux, and WSL through a shell script served from the server's public directory. This script handles dependency management, including automatic installation of the Bun runtime, chosen for its superior performance in executing TypeScript code and managing packages compared to Node.js.
+The "wikis" project provides a CLI tool for managing personal AI-generated wikis. This page outlines the steps to install and set up the CLI, which enables watching project files, generating wiki pages via AI agents, and syncing with a server. The installation process prioritizes simplicity and cross-platform compatibility on macOS, Linux, and WSL through a shell script. This script handles dependency management, including automatic installation of the Bun runtime if absent. Bun serves as the primary runtime due to its superior performance in executing TypeScript code and managing packages compared to Node.js.
 
 ## Prerequisites
 
-A Unix-like shell such as Bash or Zsh is required, as the installation script relies on shell commands for environment detection and setup. Bun functions as the primary runtime. The script detects Bun's presence and installs it if missing, isolating it within the user's `~/.config/wikis` directory to avoid system-wide changes.
+A Unix-like shell such as Bash or Zsh is required, as the installation script relies on shell commands for environment detection and setup. The script isolates Bun within the user's `~/.config/wikis` directory to avoid system-wide changes and potential conflicts.
 
 ## Installation Steps
 
@@ -29,7 +29,7 @@ The server exposes static files from `PUBLIC_DIR` at the `/public/*` route, with
 })
 ```
 
-Installation fetches this script via a single command:
+Installation fetches the script via a single command:
 
 ```bash
 curl -fsSL https://wikis.fyi/public/install.sh | sh
@@ -37,12 +37,12 @@ curl -fsSL https://wikis.fyi/public/install.sh | sh
 
 The script performs these steps:
 
-1. Detects Bun and installs it from bun.sh if absent.
+1. Detects Bun and installs it from bun.sh if absent, isolating it within `~/.config/wikis`.
 2. Clones or updates the repository into `~/.config/wikis/src`.
 3. Executes `bun install` to manage dependencies.
-4. Runs `bun link`, leveraging the `package.json` `bin` field (`"wikis": "cli/main.ts"`) to create a global symlink for the `wikis` command in the PATH, bypassing npm or Homebrew.
+4. Runs `bun link`, leveraging the `package.json` `bin` field (`"wikis": "cli/main.ts"`) to create a global symlink for the `wikis` command in the PATH.
 
-This approach confines the installation to `~/.config/wikis`, preventing global namespace pollution. Updates occur via `wikis update`, which pulls repository changes and reinstalls dependencies. See [cli-commands.md](cli-commands.md) for command details.
+This approach confines the entire installation to `~/.config/wikis`, preventing global namespace pollution. Updates occur via `wikis update`, which pulls repository changes and reinstalls dependencies. See [cli-commands.md](cli-commands.md) for command details.
 
 ## Verifying the Installation
 
@@ -52,9 +52,23 @@ Confirm installation by displaying help output, which lists available commands a
 wikis --help
 ```
 
-Success displays commands such as `wikis init` for project setup and `wikis serve` for the local server. PATH-related failures require shell restart or inspection of `~/.config/wikis`.
+Success displays commands such as `wikis init` for project setup and `wikis serve` for the local server. PATH-related failures require restarting the shell or inspecting `~/.config/wikis`.
 
-A machine-readable overview for LLMs appears at `/llms.txt` once the server runs, served similarly from `PUBLIC_DIR/llms.txt`.
+The server also provides a machine-readable overview for LLMs at `/llms.txt`, served only if `PUBLIC_DIR/llms.txt` exists:
+
+```typescript
+.get("/llms.txt", ({ set }) => {
+  if (!existsSync(LLMS_TXT)) {
+    set.status = 404;
+    return "Not found";
+  }
+  return new Response(Bun.file(LLMS_TXT), {
+    headers: { "Content-Type": CONTENT_TYPE_TEXT_UTF8 },
+  });
+})
+```
+
+where `LLMS_TXT = `${PUBLIC_DIR}/llms.txt`;`.
 
 ## Self-Hosting the Server
 
@@ -73,7 +87,9 @@ const app = new Elysia()
 console.log(`wikis.fyi running at http://${HOST}:${PORT}`);
 ```
 
-Defaults bind to `http://0.0.0.0:3000`, configurable via `PORT`/`HOST` or the YAML file. A health endpoint verifies readiness:
+Defaults bind to `http://0.0.0.0:3000`. In self-hosted mode, authentication is bypassed via `isSelfHosted()`, which ensures a local user (ID 0, email "local@example.com") owns all data—no Legendum account key required. See [authentication.md](authentication.md) for details.
+
+A health endpoint verifies readiness:
 
 ```bash
 curl http://localhost:3000/health
@@ -92,7 +108,7 @@ export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || (rawConfig.gemini_ap
 
 Embeddings leverage Ollama at `http://localhost:11434` (configurable via `OLLAMA_URL`/`OLLAMA_EMBED_MODEL`). See [search-features.md](search-features.md) for hybrid FTS5 + vector search details and [ai-generation.md](ai-generation.md) for agent orchestration.
 
-The CLI daemon connects to the local instance by configuring `api_url: http://localhost:3000/api` in `~/.config/wikis/config.yml`. Consult [self-hosting.md](self-hosting.md) for complete setup, [architecture.md](architecture.md) for component integration, [configuration.md](configuration.md) for options, [syncing-mechanism.md](syncing-mechanism.md) for synchronization, and [cli-commands.md](cli-commands.md) for daemon management via `wikis start`.
+The CLI daemon connects to the local instance by configuring `api_url: http://localhost:3000/api` in `~/.config/wikis/config.yml`. See [self-hosting.md](self-hosting.md) for complete setup, [architecture.md](architecture.md) for component integration, [configuration.md](configuration.md) for options, [syncing-mechanism.md](syncing-mechanism.md) for synchronization, and [cli-commands.md](cli-commands.md) for daemon management via `wikis start`.
 
 ## Next Steps
 

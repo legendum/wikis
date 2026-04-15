@@ -1,12 +1,12 @@
 # API Reference
 
-The "wikis" project exposes a JSON web API under the `/api` prefix for managing AI-generated wikis. Endpoints handle file synchronization, source ingestion for regeneration, content search, wiki CRUD operations, usage tracking, manual rebuilds, authentication via Legendum account keys, and MCP integration. The API uses the Elysia framework for routing, defined modularly in `src/routes/api.ts` and mounted via `app.use(apiRoutes)` in `src/server.ts`. All endpoints use JSON request and response bodies. User-specific operations require `Authorization: Bearer <token>` where `<token>` is a Legendum account key starting with `lak_`. The `authGuard` middleware validates tokens against the global user registry database and provides access to the user's private per-user SQLite database.
+The "wikis" project exposes a JSON web API under the `/api` prefix for managing AI-generated wikis. Endpoints handle file synchronization, source ingestion for regeneration, content search, wiki CRUD operations, usage tracking, manual rebuilds, authentication via Legendum account keys, and MCP integration. The API uses the Elysia framework for routing, defined in `src/routes/api.ts` and mounted via `app.use(apiRoutes)` in `src/server.ts`. All endpoints use JSON request and response bodies. User-specific operations require `Authorization: Bearer <token>` where `<token>` is a Legendum account key starting with `lak_`. The `authGuard` middleware validates tokens against the global user registry database and provides access to the user's private per-user SQLite database.
 
 A health check endpoint exists at `/health` (outside `/api`), returning `{ "ok": true }`.
 
 ## Overview
 
-The API integrates with per-user SQLite databases for private wikis and a global database for user registry and authentication, as detailed in [Architecture](architecture.md) and [Database Storage](database-storage.md). Most endpoints apply the `authGuard` middleware, which behaves differently in hosted and self-hosted modes:
+The API integrates with per-user SQLite databases for private wikis and a global database for user registry and authentication, as detailed in [Architecture](architecture.md) and [Database Storage](database-storage.md). Most endpoints apply the `authGuard` middleware, which behaves differently in hosted and self-hosted modes. In self-hosted mode ([Self-Hosting](self-hosting.md)), authentication is bypassed, and all requests use a single local user database.
 
 ```typescript
 function authGuard(headers: Record<string, string | undefined>) {
@@ -33,7 +33,7 @@ function authGuard(headers: Record<string, string | undefined>) {
 }
 ```
 
-In hosted mode, the middleware extracts the bearer token, validates its SHA-256 hash against stored keys in the global database, and returns the user record with their per-user database handle. In self-hosted mode ([Self-Hosting](self-hosting.md)), authentication is bypassed, and all requests use a single local user database. Initial Legendum API validation occurs during key registration via `POST /api/login` ([Authentication](authentication.md)).
+In hosted mode, the middleware extracts the bearer token, computes its SHA-256 hash, validates against stored hashes in the global database `account_keys` table, and returns the user record with their per-user database handle. Initial Legendum API validation occurs during key registration via `POST /api/login` ([Authentication](authentication.md)).
 
 Elysia enables the shared `/api` prefix:
 
@@ -42,23 +42,23 @@ export const apiRoutes = new Elysia({ prefix: '/api' })
   // ... endpoints
 ```
 
-All responses follow `{ "ok": boolean, "data"?: any, "error"?: string, "message"?: string }`. Common errors include `wiki_not_found`, `missing_query`, `internal_error`, and `invalid_key`. Wikis create on-demand during sync or source operations. Endpoints interact with storage ([Syncing Mechanism](syncing-mechanism.md)), search indexes ([Search Features](search-features.md)), and AI generation ([AI Generation](ai-generation.md)). They power CLI tools ([CLI Commands](cli-commands.md)).
+All responses follow `{ "ok": boolean, "data"?: any, "error"?: string, "message"?: string }`. Common errors include `wiki_not_found`, `missing_query`, `internal_error`, and `invalid_key`. Request bodies undergo manual validation via helper functions like `asObject`, `requireString`, and `requireArray`, which throw descriptive errors for invalid JSON objects, missing strings, or arrays. Wikis create on-demand during sync or source operations. Endpoints interact with storage ([Syncing Mechanism](syncing-mechanism.md)), search indexes ([Search Features](search-features.md)), and AI generation ([AI Generation](ai-generation.md)). They power CLI tools ([CLI Commands](cli-commands.md)).
 
-Public endpoints like `POST /api/mcp` use a shared public database if no valid token provides access to a user database.
+Public endpoints like `POST /api/mcp` use a shared public database if no valid token provides access to a user database. In self-hosted mode, the local user database serves as the fallback.
 
 ## Authentication
 
-Bearer tokens from Legendum account keys provide access to private wikis. Register keys via `POST /api/login`, which validates against the Legendum API (if not self-hosted) before storing a local SHA-256 hash. The `authGuard` isolates operations to per-user databases. In self-hosted mode, `POST /api/login` accepts any `lak_...` key and returns the local user email without remote validation.
+Bearer tokens from Legendum account keys provide access to private wikis. Register keys via `POST /api/login`, which validates against the Legendum API (if not self-hosted) before storing a local SHA-256 hash in the global `account_keys` table. The `authGuard` isolates operations to per-user databases. In self-hosted mode, `POST /api/login` accepts any `lak_...` key without remote validation and returns the local user email.
 
 ## Endpoints
 
 ### Sync Endpoints
 
-Handle manifest-based file synchronization for wiki content. Wikis auto-create if absent.
+Handle manifest-based file synchronization for wiki content. Wikis auto-create if absent. Manifests are path-to-hash objects ([Syncing Mechanism](syncing-mechanism.md)).
 
 - **POST /api/sync**
 
-  Computes a sync plan by diffing local and remote manifests ([Syncing Mechanism](syncing-mechanism.md)). Creates the wiki if missing.
+  Computes a sync plan by diffing local and remote manifests. Creates the wiki if missing.
 
   Request body:
   ```json
@@ -75,7 +75,7 @@ Handle manifest-based file synchronization for wiki content. Wikis auto-create i
 
 - **POST /api/push**
 
-  Upserts files to `wiki_files`, updates manifests, and indexes content in `wiki_chunks` (without embeddings for search).
+  Upserts files to `wiki_files`, updates manifests, and indexes content in `wiki_chunks` (embeddings disabled for search efficiency).
 
   Request body:
   ```json
@@ -124,7 +124,7 @@ Ingest source files into `source_files`, detect changes via content hash, and sc
 
 - **POST /api/sources**
 
-  Stores sources with hashes; skips unchanged files (no `modified_at` update). Queues regeneration if sources changed (`changed > 0`) or initial build needed (sources present but no wiki pages). Debounces if wiki pages already exist. Uses the user's `legendum_token` for agent configuration.
+  Stores sources with hashes; skips unchanged files entirely (no `modified_at` update). Queues regeneration if sources changed (`changed > 0`) or initial build needed (sources present but no wiki pages). Debounces if wiki pages already exist. Uses the user's `legendum_token` for agent configuration.
 
   Request body:
   ```json
@@ -196,7 +196,7 @@ CRUD operations on wikis and pages.
 
 - **DELETE /api/wikis/:name/pages/:path**
 
-  Marks page as `deleted=TRUE` in `wiki_files` (preserves regeneration skip logic), deletes `wiki_chunks`, and triggers asynchronous index rebuild via agent (omits deleted page from `index.md`).
+  Marks page as `deleted=TRUE` in `wiki_files` (preserves regeneration skip logic), deletes `wiki_chunks`, and triggers asynchronous index rebuild via agent (omits deleted page from `index.md`). Appends `.md` if missing.
 
   Response: `{ "ok": true, "data": { "deleted": "path.md" } }` or `{ "ok": false, "error": "wiki_not_found" }`.
 

@@ -64,7 +64,7 @@ The algorithm processes all unique paths from both manifests (optionally using a
   - One side unchanged: Push or pull the changed side.
   - Both changed: Flag in `conflicts`; resolve via `modified` timestamp (newer wins, added to `push` or `pull`).
 
-This last-write-wins approach prioritizes recency, automatically resolving conflicts while flagging them for user awareness.
+This last-write-wins approach prioritizes recency, automatically resolving conflicts while flagging them for user awareness. The server computes the plan without `lastKnown`, so the client tracks its prior manifest locally to detect `deleteLocal`/`deleteRemote`.
 
 ## API Endpoints
 
@@ -81,6 +81,9 @@ The client submits `{ wiki: string; files: Manifest }`. The server auto-creates 
   const b = asObject(body);
   const wikiName = requireString(b, "wiki");
   const localManifest = b.files as Manifest;
+  if (!localManifest || typeof localManifest !== "object") {
+    throw new Error("Invalid request: 'files' must be a manifest object");
+  }
 
   // Get or create wiki
   let wiki = db
@@ -103,6 +106,7 @@ The client submits `{ wiki: string; files: Manifest }`. The server auto-creates 
 Uploads specified files `{ wiki: string; files: Array<{ path: string; content: string; modified: string }> }`. Requires existing wiki; upserts via `ON CONFLICT` and indexes chunks for [search-features.md] (embeddings disabled to prioritize speed).
 
 ```typescript
+// src/routes/api.ts
 .post("/push", async ({ body, headers }) => {
   const { db } = authGuard(headers);
   const b = asObject(body);
@@ -120,6 +124,7 @@ Uploads specified files `{ wiki: string; files: Array<{ path: string; content: s
 
   for (const file of files) {
     upsertFile(db, wiki.id, file.path, file.content, file.modified);
+    // Index wiki content for search
     await indexFile(db, wiki.id, "wiki_chunks", file.path, file.content, {
       embeddings: false,
     });
@@ -134,6 +139,7 @@ Uploads specified files `{ wiki: string; files: Array<{ path: string; content: s
 Retrieves files by path `{ wiki: string; paths: string[] }`. Excludes soft-deleted files (`deleted = TRUE`).
 
 ```typescript
+// src/routes/api.ts
 .post("/pull", async ({ body, headers }) => {
   const { db } = authGuard(headers);
   const b = asObject(body);
@@ -158,6 +164,10 @@ Retrieves files by path `{ wiki: string; paths: string[] }`. Excludes soft-delet
 })
 ```
 
+### Delete Page (/api/wikis/:name/pages/:path) (DELETE)
+
+Marks a page as soft-deleted (`deleted = TRUE` in `wiki_files`), removes its chunks, and triggers wiki regeneration via the [ai-generation.md] agent.
+
 ## Client Workflow
 
 The CLI (`wikis sync`) executes:
@@ -165,11 +175,11 @@ The CLI (`wikis sync`) executes:
 1. Scans local filesystem to build `localManifest`.
 2. POST `/api/sync` with `{ wiki, files: localManifest }` → receives `plan`.
 3. **Push**: POST `/api/push` with contents of `plan.push` + `plan.conflicts` (where local wins).
-4. **Pull**: POST `/api/pull` with `plan.pull` + `plan.conflicts` (where remote wins); writes files locally.
+4. **Pull**: POST `/api/pull` with `plan.pull` + `plan.conflicts` (where remote wins); writes files locally. For paths requested but missing (soft-deleted remotely), removes from local filesystem.
 5. **Deletes**:
-   - `plan.deleteLocal`: Remove paths from local filesystem (server soft-deleted via `deleted = TRUE`).
-   - `plan.deleteRemote`: DELETE `/wikis/${wiki}/pages/${path}` for each (marks server-side `deleted = TRUE`, deletes chunks, triggers regeneration).
-6. Rebuilds `localManifest`; repeats if plan non-empty (ensures convergence).
+   - `plan.deleteLocal` (client-side with `lastKnown`): Remove paths from local filesystem.
+   - `plan.deleteRemote` (client-side with `lastKnown`): DELETE `/api/wikis/${wiki}/pages/${path}` for each (marks server-side `deleted = TRUE`, deletes chunks, triggers regeneration).
+6. Rebuilds `localManifest`; repeats if plan non-empty (ensures convergence; client detects no-op pulls to avoid loops on soft-deletes).
 
 Soft deletes (`deleted = TRUE`) persist in manifests (for detection) but exclude from pulls/views. Regeneration skips deleted pages.
 
