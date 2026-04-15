@@ -2,7 +2,7 @@
  * Daemon process — polls registered projects for source file changes and syncs.
  * Spawned by `wikis start`, killed by `wikis stop`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const { parse } = Bun.YAML;
@@ -20,6 +20,7 @@ import {
   writeProjects,
 } from "./config";
 import { ensureWikiRow } from "./ensure-wiki";
+import { syncWikiPages } from "./wiki-sync";
 
 const POLL_INTERVAL = getPollInterval();
 const MAX_BACKOFF = 30 * 60 * 1000; // 30 minutes
@@ -68,49 +69,6 @@ function findChangedFiles(
   return changed;
 }
 
-async function pullWikiPages(
-  projectDir: string,
-  config: WikiConfig,
-  headers: Record<string, string>,
-): Promise<number> {
-  const apiUrl = getApiUrl();
-
-  const syncRes = await fetch(`${apiUrl}/api/sync`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ wiki: config.name, files: {} }),
-  });
-  if (!syncRes.ok) return 0;
-
-  const syncData = (await syncRes.json()) as {
-    ok: boolean;
-    data?: { pull: string[] };
-  };
-  const pullPaths = syncData.data?.pull || [];
-  if (pullPaths.length === 0) return 0;
-
-  const pullRes = await fetch(`${apiUrl}/api/pull`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ wiki: config.name, paths: pullPaths }),
-  });
-  if (!pullRes.ok) return 0;
-
-  const pullData = (await pullRes.json()) as {
-    ok: boolean;
-    data?: { files: { path: string; content: string }[] };
-  };
-
-  const wikiDir = resolve(projectDir, "wiki");
-  for (const file of pullData.data?.files || []) {
-    const filePath = resolve(wikiDir, file.path);
-    mkdirSync(resolve(filePath, ".."), { recursive: true });
-    writeFileSync(filePath, file.content);
-  }
-
-  return pullData.data?.files.length || 0;
-}
-
 async function syncProject(
   projectDir: string,
   config: WikiConfig,
@@ -156,8 +114,8 @@ async function syncProject(
     writeHashes(config.name, currentHashes);
   }
 
-  // Pull updated wiki pages
-  const pulled = await pullWikiPages(projectDir, config, headers);
+  // Bidirectional wiki/*.md sync (push local edits, then pull) — no /api/sources
+  const wiki = await syncWikiPages(projectDir, config.name, apiUrl, headers);
 
   // Update last_check
   const projects = readProjects();
@@ -167,7 +125,7 @@ async function syncProject(
     writeProjects(projects);
   }
 
-  return changedPaths.length > 0 || pulled > 0;
+  return changedPaths.length > 0 || wiki.pushed > 0 || wiki.pulled > 0;
 }
 
 async function pollOnce() {

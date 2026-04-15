@@ -347,14 +347,11 @@ projects:
 
 `wikis start` forks a background process that manages all registered projects:
 
-1. Iterates through registered projects on the check interval
-2. For each project: detect source changes, push changes if needed
-3. Pulls wiki updates from remote for all projects
-4. Exponential backoff per project (5 → 30 min) — active projects are checked more often
-5. Syncs wiki file changes to remote (debounced 2s per project)
-6. Polls remote for changes every hour
-7. Writes logs to `~/.config/wikis/log/`
-8. PID stored in `~/.config/wikis/daemon.pid`
+1. Iterates through registered projects on the check interval (default 5 minutes, configurable via `poll_interval` in `~/.config/wikis/config.yml`)
+2. For each project: detect **source** file changes, push to `/api/sources` when needed (can queue AI regeneration)
+3. **Wiki pages (`wiki/**/*.md`):** build a local manifest, `POST /api/sync`, then push local edits via `/api/push` and pull remote updates via `/api/pull` — **does not** call `/api/sources`, so human edits to generated pages are persisted without triggering the agent
+4. Exponential backoff per project (5 → 30 min) after errors
+5. PID stored in `~/.config/wikis/daemon.pid`
 
 ## Web service
 

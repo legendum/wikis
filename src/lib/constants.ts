@@ -50,13 +50,6 @@ export const LEGENDUM_BASE_URL =
   (rawConfig.legendum_base_url as string) ||
   "https://legendum.co.uk";
 
-/**
- * @deprecated Prefer `isByLegendum()` from `./mode`. Kept for back-compat.
- * Hosted mode is now driven by the presence of `LEGENDUM_API_KEY` alone,
- * matching the convention used in depends.cc.
- */
-export const IS_HOSTED = Boolean(LEGENDUM_API_KEY);
-
 // LLM (self-hosted mode — first configured provider wins)
 export const CLAUDE_API_KEY =
   process.env.CLAUDE_API_KEY || (rawConfig.anthropic_api_key as string);

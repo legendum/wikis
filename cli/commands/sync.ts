@@ -5,7 +5,7 @@
  *   wikis sync         — sync current project
  *   wikis sync --all   — sync all registered projects
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const { parse } = Bun.YAML;
@@ -19,6 +19,7 @@ import {
   writeProjects,
 } from "../lib/config";
 import { ensureWikiRow } from "../lib/ensure-wiki";
+import { syncWikiPages } from "../lib/wiki-sync";
 
 interface WikiConfig {
   name: string;
@@ -109,44 +110,21 @@ async function syncProject(projectDir: string) {
     console.log(`  ${changed} file(s) changed.`);
   }
 
-  // Pull wiki pages
-  const syncRes = await fetch(`${apiUrl}/api/sync`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ wiki: config.name, files: {} }),
-  });
-
-  if (!syncRes.ok) {
-    console.error(`  Sync failed: ${syncRes.status} ${syncRes.statusText}`);
+  // Bidirectional wiki/*.md sync (push local edits, then pull)
+  let wikiPushed = 0;
+  let wikiPulled = 0;
+  try {
+    const wiki = await syncWikiPages(projectDir, config.name, apiUrl, headers);
+    wikiPushed = wiki.pushed;
+    wikiPulled = wiki.pulled;
+  } catch (e) {
+    console.error(`  Wiki sync failed: ${(e as Error).message}`);
     return;
   }
-
-  const syncData = (await syncRes.json()) as {
-    ok: boolean;
-    data?: { pull: string[] };
-  };
-  const pullPaths = syncData.data?.pull || [];
-
-  if (pullPaths.length > 0) {
-    const pullRes = await fetch(`${apiUrl}/api/pull`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ wiki: config.name, paths: pullPaths }),
-    });
-
-    if (pullRes.ok) {
-      const pullData = (await pullRes.json()) as {
-        ok: boolean;
-        data?: { files: { path: string; content: string }[] };
-      };
-      const wikiDir = resolve(projectDir, "wiki");
-      for (const file of pullData.data?.files || []) {
-        const filePath = resolve(wikiDir, file.path);
-        mkdirSync(resolve(filePath, ".."), { recursive: true });
-        writeFileSync(filePath, file.content);
-      }
-      console.log(`  Pulled ${pullData.data?.files.length || 0} wiki page(s).`);
-    }
+  if (wikiPushed > 0 || wikiPulled > 0) {
+    console.log(
+      `  Wiki: pushed ${wikiPushed} page(s), pulled ${wikiPulled} page(s).`,
+    );
   } else {
     console.log(`  Wiki pages up to date.`);
   }

@@ -3,7 +3,6 @@
  */
 import { Elysia, t } from "elysia";
 import {
-  IS_HOSTED,
   LEGENDUM_API_KEY,
   LEGENDUM_BASE_URL,
   LEGENDUM_SECRET,
@@ -11,6 +10,7 @@ import {
 } from "../lib/constants";
 import { createUser, getGlobalDb, getUserByEmail } from "../lib/db";
 import legendum from "../lib/legendum.js";
+import { isByLegendum } from "../lib/mode";
 
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
@@ -53,7 +53,7 @@ export function getSessionUser(token: string): number | null {
 }
 
 function getClient() {
-  if (!IS_HOSTED) return null;
+  if (!isByLegendum()) return null;
   return legendum.create({
     apiKey: LEGENDUM_API_KEY,
     secret: LEGENDUM_SECRET,

@@ -13,9 +13,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
 import { resolveProvider } from "./ai";
-import { CONFIG_DIR, IS_HOSTED } from "./constants";
+import { CONFIG_DIR } from "./constants";
 import type { LegendumReservation } from "./legendum.js";
 import { log } from "./log";
+import { isByLegendum } from "./mode";
 
 // --- Pricing config ---
 
@@ -79,7 +80,7 @@ async function getLegendum(): Promise<LegendumModule> {
 
 /** Should we bill this user? Only in hosted mode when user has no own API key. */
 export function shouldBill(userHasOwnKey: boolean): boolean {
-  return IS_HOSTED && !userHasOwnKey;
+  return isByLegendum() && !userHasOwnKey;
 }
 
 export interface Reservation {
