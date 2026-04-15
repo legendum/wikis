@@ -1,10 +1,10 @@
 # Self-Hosting
 
-Self-hosting deploys the full wikis.fyi service on a local machine. The Elysia server manages AI-powered wiki generation, source ingestion, search, and dynamic web serving using SQLite databases for content and metadata. No outbound connections occur to the remote wikis.fyi service. Users supply LLM API keys via environment variables to power generation tasks. Local Ollama generates embeddings for search. Optional authentication uses locally generated account keys, stored as hashes in the global database `data/wikis.db`. Self-hosting enables privacy-focused operation, local development, and fully offline workflows.
+Self-hosting deploys the full wikis.fyi service on a local machine. The Elysia server manages AI-powered wiki generation, source ingestion, search, and dynamic web serving using SQLite databases for content and metadata. No outbound connections occur to the remote wikis.fyi service. Users supply LLM API keys via environment variables to power generation tasks. Local Ollama generates embeddings for search. Optional authentication uses locally generated account keys, stored as hashes in the global database `data/wikis.db`. Self-hosting enables privacy-focused operation, local development, and fully offline workflows once initial setup completes.
 
 ## Overview
 
-The codebase functions identically in hosted and self-hosted modes, with mode detection based on environment variables. The `wikis serve` command launches the server, binding to `http://0.0.0.0:3000` by default. The Elysia application exposes the same API routes, agent logic, and search capabilities as the hosted service. LLM providers auto-detect from environment variables, bypassing all billing logic.
+The codebase functions identically in hosted and self-hosted modes, with mode detection based on the absence of `LEGENDUM_API_KEY`. The `wikis serve` command launches the server, binding to `http://0.0.0.0:3000` by default. The Elysia application exposes the same API routes, agent logic, and search capabilities as the hosted service. LLM providers auto-detect from environment variables, bypassing all billing logic since `legendum_token` remains `null`.
 
 Key components integrate as follows:
 
@@ -74,10 +74,10 @@ function detectProvider(): Provider {
 Set one provider key:
 
 ```bash
-export OPENAI_API_KEY=sk-...          # OpenAI (default: gpt-5-mini)
-export CLAUDE_API_KEY=sk-ant-...      # Anthropic (default: claude-haiku-4-5)
-export XAI_API_KEY=xai-...            # xAI/Grok (default: grok-4-1-fast-reasoning)
-export GEMINI_API_KEY=...             # Google Gemini (default: gemini-3.1-flash-lite-preview)
+export XAI_API_KEY=xai-...       # xAI/Grok (default: grok-4-1-fast-reasoning)
+export OPENAI_API_KEY=sk-...     # OpenAI (default: gpt-5-mini)
+export GEMINI_API_KEY=...        # Google Gemini (default: gemini-3.1-flash-lite-preview)
+export CLAUDE_API_KEY=sk-ant-... # Anthropic (default: claude-haiku-4-5)
 ```
 
 Embeddings require local Ollama:
@@ -103,22 +103,28 @@ wikis start
 
 ### Authentication
 
-Self-hosting supports optional local authentication. Account keys (prefixed `lak_...`) hash and store in `data/wikis.db`. API routes like `/api/sources` enforce `authGuard`:
+Self-hosting supports optional local authentication but defaults to no authentication required. The `authGuard` middleware detects self-hosted mode and assigns a single local user without token validation:
 
 ```typescript
 // From src/routes/api.ts
 function authGuard(headers: Record<string, string | undefined>) {
-  const token = extractBearerToken(headers.authorization);
-  if (!token) throw new Error("Missing Authorization header");
-
-  const user = validateAccountKey(token);
-  if (!user) throw new Error("Invalid account key");
-
-  return { user, db: getUserDb(user.id) };
+  // Self-hosted mode: no auth, single local user owns everything.
+  if (isSelfHosted()) {
+    ensureLocalUser();
+    return {
+      user: {
+        id: LOCAL_USER_ID,
+        email: LOCAL_USER_EMAIL,
+        legendum_token: null as string | null,
+      },
+      db: getUserDb(LOCAL_USER_ID),
+    };
+  }
+  // ... hosted mode logic
 }
 ```
 
-`validateAccountKey` checks local hashes without remote validation. See [authentication.md](authentication.md). Endpoints like `/mcp` fallback to the public database (`data/public.db`) if unauthenticated. See [mcp-integration.md](mcp-integration.md).
+The local user (`LOCAL_USER_ID: 0`, `LOCAL_USER_EMAIL: 'local@example.com'`) owns all wikis. Account keys (prefixed `lak_...`) can hash and store in `data/wikis.db` for explicit auth. See [authentication.md](authentication.md). Endpoints like `/mcp` use the local user database or fall back to `data/public.db` if unauthenticated. See [mcp-integration.md](mcp-integration.md).
 
 ## Configuration
 
@@ -183,7 +189,7 @@ Self-hosting emphasizes local autonomy:
 | Aspect          | Hosted                          | Self-Hosted                          |
 |-----------------|---------------------------------|--------------------------------------|
 | **Billing**     | Legendum credits                | None (user LLM keys)                 |
-| **Auth**        | Legendum OAuth/keys             | Local hashed keys (optional)         |
+| **Auth**        | Legendum OAuth/keys             | Local user (no token required; optional hashed keys) |
 | **Storage**     | SQLite `wiki_files.content`     | SQLite + synced `wiki/` filesystem   |
 | **LLM Keys**    | Service-managed                 | User environment variables           |
 | **Embeddings**  | Server Ollama                   | Local Ollama required                |

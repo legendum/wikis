@@ -2,25 +2,31 @@
 
 ## Overview
 
-MCP (Model Context Protocol) provides a standardized JSON-RPC 2.0 interface that exposes wiki functionalities as tools for AI agents. The wikis project implements an MCP server at the `/api/mcp` HTTP endpoint via POST requests. This allows MCP-compliant agents, such as those from Anthropic, to discover available tools and invoke them without custom HTTP client code. Tools enable listing wikis, searching content with hybrid FTS5 and vector search from [search-features.md](search-features.md), reading full pages from [database-storage.md](database-storage.md), and listing pages.
+MCP (Model Context Protocol) provides a standardized JSON-RPC 2.0 interface that exposes wiki functionalities as tools for AI agents. The wikis project implements an MCP server at the `/api/mcp` HTTP endpoint via POST requests. This enables MCP-compliant agents, such as those from Anthropic, to discover available tools and invoke them without custom HTTP client code. Tools support listing wikis, searching content with hybrid FTS5 and vector search from [search-features.md](search-features.md), reading full pages from [database-storage.md](database-storage.md), and listing pages.
 
-The server supports both authenticated user-specific wikis and public wikis. Authentication uses a Bearer token in the `Authorization` header to select the user's database via [authentication.md](authentication.md); without a valid token, it falls back to the public database. This design ensures seamless integration under the API routes described in [architecture.md](architecture.md), leveraging core components for secure, searchable access to wiki data.
+The server supports both authenticated user-specific wikis and public wikis. In hosted mode, authentication uses a Bearer token in the `Authorization` header to select the user's database via [authentication.md](authentication.md); without a valid token, it falls back to the public database. In self-hosted mode, requests use the local user database directly, with fallback to public if needed. This design integrates seamlessly under the API routes in [architecture.md](architecture.md), leveraging core components for secure, searchable access to wiki data. See [self-hosting.md](self-hosting.md) for self-hosting details.
 
 ## Endpoint and Authentication
 
-The MCP server listens for POST requests to `/api/mcp`. Each request body contains a JSON-RPC 2.0 payload. The handler extracts the Bearer token, validates it to load the appropriate database, and dispatches to method-specific logic in `src/lib/mcp.ts`.
+The MCP server processes POST requests to `/api/mcp`. Each request body contains a JSON-RPC 2.0 payload. The handler determines the database based on mode and authentication, then dispatches to method-specific logic in `src/lib/mcp.ts`.
 
 From `src/routes/api.ts`:
 
 ```typescript
 .post("/mcp", async ({ body, headers }) => {
-  // MCP supports both authenticated (user wikis) and public wikis
-  const token = extractBearerToken(headers.authorization);
+  // MCP supports both authenticated (user wikis) and public wikis.
+  // In self-hosted mode the local user db is the only "authenticated" db.
   let db: Database;
-  if (token) {
-    const user = validateAccountKey(token);
-    if (user) {
-      db = getUserDb(user.id);
+  if (isSelfHosted()) {
+    ensureLocalUser();
+    db = getUserDb(LOCAL_USER_ID);
+  } else {
+    const token = extractBearerToken(headers.authorization);
+    if (token) {
+      const user = validateAccountKey(token);
+      if (user) {
+        db = getUserDb(user.id);
+      }
     }
   }
   // Fall back to public DB
@@ -31,31 +37,31 @@ From `src/routes/api.ts`:
 });
 ```
 
-This middleware pattern aligns with other API routes, ensuring consistent authentication and database isolation.
+This middleware ensures consistent authentication and database isolation across API routes, prioritizing user databases and falling back to public content.
 
 ## Supported Methods
 
-The server handles these JSON-RPC methods:
+The server implements these JSON-RPC 2.0 methods:
 
-- **`initialize`**: Returns protocol version, capabilities, and server info. Signals connection readiness.
-- **`notifications/initialized`**: Acknowledges client initialization (no-op response).
-- **`tools/list`**: Returns the list of available tools with schemas.
-- **`tools/call`**: Invokes a tool by name with arguments, returning results as text blocks.
+- **`initialize`**: Returns protocol version, capabilities, and server information to signal readiness.
+- **`notifications/initialized`**: Acknowledges client initialization with an empty result (no-op for notifications).
+- **`tools/list`**: Lists available tools with JSON Schema definitions for input validation.
+- **`tools/call`**: Executes a named tool with provided arguments, returning results as text content blocks.
 
-Unknown methods return a standard JSON-RPC error.
+Unknown methods or invalid requests yield standard JSON-RPC errors with code -32601.
 
 ## Available Tools
 
-Four tools provide wiki access. Agents discover them via `tools/list` and call via `tools/call`. Each tool operates on the authenticated database (user or public).
+Agents discover tools via `tools/list` and invoke them via `tools/call`. Each tool operates on the resolved database (user, local user in self-hosted mode, or public).
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
 | `list_wikis` | Lists all wikis with names and descriptions. | None |
-| `search_wiki` | Performs hybrid search ([search-features.md](search-features.md)) on a wiki, returning ranked chunks. | `wiki` (string, required), `query` (string, required), `limit` (number, optional, default 10) |
-| `read_page` | Retrieves full markdown content of a page, appending recent updates if available. | `wiki` (string, required), `page` (string, required; appends `.md` if missing) |
-| `list_pages` | Lists all `.md` pages in a wiki (strips `.md` extension). | `wiki` (string, required) |
+| `search_wiki` | Performs hybrid search ([search-features.md](search-features.md)) on a wiki, returning ranked chunks with previews. | `wiki` (string, required), `query` (string, required), `limit` (number, optional, default 10) |
+| `read_page` | Retrieves full markdown content of a page, appending recent updates if available. | `wiki` (string, required), `page` (string, required; `.md` appended if missing) |
+| `list_pages` | Lists all `.md` pages in a wiki (`.md` extension stripped). | `wiki` (string, required) |
 
-Tool schemas match JSON Schema for validation. Results use MCP's `content` array with `type: "text"`.
+Tool input schemas conform to JSON Schema. Results use MCP `content` arrays with `type: "text"`. Errors set `isError: true` with descriptive text.
 
 From `src/lib/mcp.ts`:
 
@@ -66,20 +72,33 @@ export const MCP_TOOLS: McpTool[] = [
     description: "List all available wikis.",
     inputSchema: { type: "object", properties: {} },
   },
-  // ... (search_wiki, read_page, list_pages definitions)
+  {
+    name: "search_wiki",
+    description: "Search wiki pages by keyword or semantic query. Returns matching chunks ranked by relevance.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        wiki: { type: "string", description: "Wiki name (e.g. 'depends')" },
+        query: { type: "string", description: "Search query" },
+        limit: { type: "number", description: "Max results (default 10)" },
+      },
+      required: ["wiki", "query"],
+    },
+  },
+  // ... read_page, list_pages definitions
 ];
 ```
 
 ## Tool Implementation
 
-The `handleToolCall` function in `src/lib/mcp.ts` dispatches based on tool name, using database queries and helpers:
+The `handleToolCall` function in `src/lib/mcp.ts` routes to tool-specific handlers using database queries and shared utilities:
 
-- **`list_wikis`**: Queries `wikis` table for `name` and `description`.
-- **`search_wiki`**: Validates wiki, calls `search` from [search-features.md](search-features.md), formats top results with paths, scores, and previews.
-- **`read_page`**: Resolves path (adds `.md`), fetches via `getFile` from [database-storage.md](database-storage.md), appends updates from `getPageUpdates`.
-- **`list_pages`**: Filters `wiki_files` for `.md` paths via `listFiles`.
+- **`list_wikis`**: Queries the `wikis` table, formats as bullet list with descriptions.
+- **`search_wiki`**: Validates wiki existence, invokes `search` from [search-features.md](search-features.md), formats top results with page paths, scores, and 200-character previews.
+- **`read_page`**: Resolves path (appends `.md`), fetches via `getFile` from [database-storage.md](database-storage.md), appends updates from `getPageUpdates` under "## Recent Changes".
+- **`list_pages`**: Uses `listFiles` from [database-storage.md](database-storage.md), filters `.md` files, strips extensions, joins as newline-separated list.
 
-Example `search_wiki` result formatting:
+Example `search_wiki` output:
 
 ```
 1. **architecture** (score: 0.95)
@@ -88,8 +107,6 @@ Example `search_wiki` result formatting:
 2. **mcp-integration** (score: 0.87)
    MCP exposes wiki functionalities...
 ```
-
-Errors return `isError: true` with descriptive text, such as wiki or page not found.
 
 From `src/lib/mcp.ts`:
 
@@ -107,16 +124,25 @@ export async function handleToolCall(
       const wiki = getWiki(db, wikiName);
       if (!wiki) return errorResult(`Wiki "${wikiName}" not found.`);
       const results = await search(db, wiki.id, query, { limit });
-      // ... format and return textResult
+      if (results.length === 0) return textResult("No results found.");
+      const text = results
+        .map((r, i) => {
+          const page = r.path.replace(/\.md$/, "");
+          return `${i + 1}. **${page}** (score: ${r.score.toFixed(2)})\n   ${r.chunk.slice(0, 200)}`;
+        })
+        .join("\n\n");
+      return textResult(text);
     }
     // ... other cases
+    default:
+      return errorResult(`Unknown tool: ${toolName}`);
   }
 }
 ```
 
 ## Request Handling
 
-The `handleMcpRequest` function parses the JSON-RPC body and routes accordingly. It supports batched requests implicitly via standard JSON-RPC dispatching.
+The `handleMcpRequest` function parses the JSON-RPC payload and dispatches methods. It supports single requests and implicit batching via standard JSON-RPC rules.
 
 From `src/lib/mcp.ts`:
 
@@ -142,6 +168,8 @@ export async function handleMcpRequest(
           serverInfo: { name: 'wikis.fyi', version: '1.0.0' },
         },
       };
+    case 'notifications/initialized':
+      return { jsonrpc: '2.0', id, result: {} };
     case 'tools/list':
       return { jsonrpc: '2.0', id, result: { tools: MCP_TOOLS } };
     case 'tools/call': {
@@ -151,13 +179,18 @@ export async function handleMcpRequest(
       const result = await handleToolCall(db, toolName, args);
       return { jsonrpc: '2.0', id, result };
     }
-    // ... other cases and default error
+    default:
+      return {
+        jsonrpc: '2.0',
+        id,
+        error: { code: -32601, message: `Method not found: ${method}` },
+      };
   }
 }
 ```
 
 ## Design Decisions
 
-JSON-RPC 2.0 ensures broad compatibility across MCP ecosystems. Fallback to public database enables unauthenticated access to showcase wikis. Tools focus on read-only operations to prevent unauthorized writes, aligning with wiki consumption patterns. Hybrid search integration provides semantic relevance without full context dumps, optimizing token usage in agent workflows.
+JSON-RPC 2.0 over HTTP ensures compatibility with MCP ecosystems. Self-hosted mode prioritizes the local user database for seamless operation without authentication. Public database fallback enables unauthenticated access to showcase wikis. Tools emphasize read-only operations to align with wiki consumption patterns and prevent unauthorized modifications. Hybrid search integration delivers semantic relevance efficiently, optimizing token usage in agent workflows. Results format as concise, parseable text blocks suitable for LLM consumption.
 
-This setup positions wikis as a native knowledge base for MCP agents, composable with other tools for codebase analysis and documentation retrieval.
+This positions wikis as a composable knowledge base for MCP agents, integrable with tools for codebase analysis, documentation retrieval, and more.

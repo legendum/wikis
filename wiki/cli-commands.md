@@ -20,7 +20,7 @@ For setup, see [Installation](installation.md).
 
 ## Available Commands
 
-The `wikis` CLI commands are idempotent where applicable, support tab completion, and emit structured logs to `~/.config/wikis/log/`. Invoke `wikis --help` for complete options.
+The `wikis` CLI commands are idempotent where applicable, support tab completion, and emit structured logs to `~/.config/wikis/log/`. Invoke `wikis --help` for complete options. Commands interact with the server via API endpoints defined in [API Reference](api-reference.md). The daemon process stores its PID in `~/.config/wikis/daemon.pid`.
 
 ### wikis init
 
@@ -47,6 +47,137 @@ Example:
 wikis init
 ```
 
-Produces:
+### wikis start
 
+The `wikis start` command starts (or resumes) the background daemon process if it is not already running. The daemon polls all registered projects for source changes using Git diffs or hashing, pushes changed sources via `POST /api/sources`, and performs bi-directional wiki syncs via `POST /api/sync`, `POST /api/push`, and `POST /api/pull`. Polling uses per-project exponential backoff (5 minutes initial, doubling to 30 minutes cap). Starts automatically on `wikis init` if needed.
+
+Example:
+
+```bash
+wikis start
+```
+
+### wikis stop
+
+The `wikis stop` command terminates the background daemon by sending SIGTERM to the PID in `~/.config/wikis/daemon.pid`. Syncs complete before shutdown.
+
+Example:
+
+```bash
+wikis stop
+```
+
+### wikis status [<project>]
+
+The `wikis status` command displays the health of the daemon and registered projects. Without `<project>`, shows all projects' sync state, last check times, source change counts, and agent queue status (via server usage). With `<project>`, details the specific project's local manifest vs. remote, pending pushes/pulls, and recent logs.
+
+Example:
+
+```bash
+wikis status
+wikis status wikis
+```
+
+### wikis sync [--all]
+
+The `wikis sync` command triggers a manual bi-directional sync for the current project (or `--all` for every registered project). Builds local `wiki/` manifest, sends `POST /api/sync` to compute push/pull plans via `diffManifests`, executes `POST /api/push` for local changes, and `POST /api/pull` for remote updates. Last-write-wins resolves conflicts; losing versions save as `{path}.conflict.md`. See [Syncing Mechanism](syncing-mechanism.md).
+
+Example:
+
+```bash
+wikis sync
+wikis sync --all
+```
+
+### wikis serve
+
+The `wikis serve` command starts the full wikis.fyi server locally for self-hosting. Listens on configurable port (default from `config/wikis.yml`), handles API routes, web rendering, and MCP integration. No Legendum billing; uses local LLM keys. Daemon syncs to `http://localhost:{port}/api`. See [Self-hosting](self-hosting.md).
+
+Example:
+
+```bash
+wikis serve
+```
+
+### wikis login [--key <key>]
+
+The `wikis login` command authenticates with Legendum, storing the account key in `~/.config/wikis/config.yml`. Browser flow via `GET /login` → OAuth → `GET /auth/callback`, or `--key lak_...` via `POST /api/login`. Self-hosted skips validation, uses local user.
+
+Example:
+
+```bash
+wikis login
+wikis login --key lak_...
+```
+
+### wikis list
+
+The `wikis list` command lists all registered projects from `~/.config/wikis/projects.yml`, showing paths, names, last check times, and sync status.
+
+Example:
+
+```bash
+wikis list
+```
+
+### wikis remove
+
+The `wikis remove` command unregisters the current project from `~/.config/wikis/projects.yml`. Does not delete local `wiki/` or server data.
+
+Example:
+
+```bash
+wikis remove
+```
+
+### wikis update
+
+The `wikis update` command updates the CLI by pulling latest code from the repository to `~/.config/wikis/src` and running `bun install` + `bun link`.
+
+Example:
+
+```bash
+wikis update
+```
+
+### wikis search <query>
+
+The `wikis search` command searches the current project's wiki via `GET /api/search/{wiki}?q={query}&limit={limit}`. Uses FTS5 for candidates, RAG re-ranking via Ollama embeddings. Displays ranked chunks with paths and scores. Falls back to FTS-only if embeddings unavailable. See [Search Features](search-features.md).
+
+Example:
+
+```bash
+wikis search "sync protocol"
+```
+
+### wikis open [<folder>]
+
+The `wikis open` command starts a lightweight local server to preview `wiki/` (or specified `<folder>`) as rendered HTML. No database, auth, or sync; useful for offline review.
+
+Example:
+
+```bash
+wikis open
+wikis open ../other-wiki
+```
+
+### wikis rebuild [--force]
+
+The `wikis rebuild` command triggers server-side wiki regeneration via `POST /api/rebuild {wiki: "...", force: true}`. Runs agent asynchronously: plans sections, regenerates changed pages, fills missing links, updates index/log. `--force` rebuilds everything. See [AI Generation](ai-generation.md).
+
+Example:
+
+```bash
+wikis rebuild
+wikis rebuild --force
+```
+
+### wikis delete <page>
+
+The `wikis delete` command deletes a wiki page locally and remotely via `DELETE /api/wikis/{name}/pages/{path}`. Marks `deleted=TRUE` in `wiki_files`, removes chunks, triggers index rebuild. Page path appends `.md` if missing.
+
+Example:
+
+```bash
+wikis delete architecture
 ```

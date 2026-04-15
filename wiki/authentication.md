@@ -2,59 +2,90 @@
 
 ## Overview
 
-Authentication in the "wikis" project secures access to user-specific wikis and APIs. Operations such as syncing sources (`POST /api/sources`), pushing wiki files (`POST /api/push`), pulling files (`POST /api/pull`), searching private wikis (`GET /api/search/:wiki`), listing wikis (`GET /api/wikis`), and regenerating content (`POST /api/rebuild`) require valid credentials via a Bearer token in the `Authorization` header. Public wikis, static assets (`/public/*`), health checks (`/health`), and MCP endpoints (`POST /mcp`) remain accessible without authentication, falling back to the public database.
+The "wikis" project secures access to user-specific wikis and protected APIs through Bearer token authentication using account keys (`lak_...`) or cookie-based sessions. Protected endpoints include syncing sources (`POST /api/sources`), pushing wiki files (`POST /api/push`), pulling files (`POST /api/pull`), searching private wikis (`GET /api/search/:wiki`), listing wikis (`GET /api/wikis`), and regenerating content (`POST /api/rebuild`). Public endpoints such as static assets (`/public/*`), health checks (`/health`), and the MCP server (`POST /mcp`) require no authentication and default to the public database (`data/public.db`).
 
-The system integrates with Legendum for identity verification. It supports two primary flows: **account keys** (`lak_...`) for CLI and API clients, and **OAuth sessions** for web browsers. Credentials and sessions store in a global SQLite database (`data/wikis.db`), with per-user data isolated in separate databases (`data/user{id}.db`) referenced by user IDs from the global database, as detailed in [database-storage.md](database-storage.md). Legendum handles external identity verification and billing token issuance; the project focuses on secure local validation, hashing of account keys, and session management.
+Authentication integrates with Legendum for identity and billing verification in hosted mode. The system supports account keys for CLI, API, and agent access, and OAuth-based sessions for web browsers. Credentials reside in a global SQLite database (`data/wikis.db`), while per-user data isolates in `data/user{id}.db` databases, referenced by user IDs from the global database ([database-storage.md](database-storage.md)). Legendum manages external identity and billing; the project handles local validation, account key hashing, and session management.
 
-Self-hosting uses the same mechanisms but skips Legendum validation and billing when Legendum credentials (`LEGENDUM_API_KEY`, `LEGENDUM_SECRET`) are absent ([self-hosting.md](self-hosting.md)).
+Self-hosting employs the same mechanisms but bypasses Legendum validation and billing if `LEGENDUM_API_KEY` and `LEGENDUM_SECRET` are absent, defaulting to a single local user ([self-hosting.md](self-hosting.md)).
 
 ## Key Concepts
 
-The project employs three mechanisms:
+The project uses three authentication mechanisms:
 
-- **Account keys** (`lak_...`): Long-lived tokens for CLI, API, and agent access. Stored hashed in the global database for local validation.
-- **OAuth sessions**: Short-lived browser cookies issued via Legendum OAuth for web access.
-- **Public fallback**: No authentication required for public wikis and MCP tools, using `data/public.db`.
+- **Account keys** (`lak_...`): Long-lived tokens for CLI ([cli-commands.md](cli-commands.md)), API ([api-reference.md](api-reference.md)), and agent access. Hashed and stored in the global database for local validation.
+- **OAuth sessions**: Short-lived, httpOnly cookies issued via Legendum OAuth for web access, stored in the `sessions` table.
+- **Public fallback**: No credentials needed for public wikis and MCP tools, using `data/public.db`.
 
-User resolution prioritizes authenticated access: API routes use Bearer tokens exclusively; web routes check Bearer first, then session cookies, then account key cookies.
+User resolution prioritizes Bearer tokens for APIs, then session cookies, then account key cookies for web routes. Self-hosted mode treats all requests as the local user without checks.
 
 ## Account Keys
 
-Account keys provide secure, token-based access for CLI commands ([cli-commands.md](cli-commands.md)) and API calls ([api-reference.md](api-reference.md)). Users generate a key from Legendum and register it via `POST /api/login`:
+Account keys enable secure token-based access. Users generate keys via Legendum and register them through `POST /api/login`.
 
 ```typescript
 // src/routes/api.ts — /api/login endpoint
 .post("/login", async ({ body }) => {
-  const { key } = body as { key: string };
-  if (!key?.startsWith("lak_")) {
-    return { ok: false, error: "invalid_key" };
+  // Self-hosted mode: no Legendum validation, local user owns everything.
+  if (isSelfHosted()) {
+    ensureLocalUser();
+    return { ok: true, data: { email: LOCAL_USER_EMAIL } };
+  }
+
+  const b = asObject(body);
+  const key = requireString(b, "key");
+  if (!key.startsWith("lak_")) {
+    return {
+      ok: false,
+      error: "invalid_key",
+      message: "Key must start with lak_",
+    };
   }
 
   // Already registered?
   const existing = validateAccountKey(key);
-  if (existing) return { ok: true, data: { email: existing.email } };
-
-  // Validate against Legendum (hosted mode)
-  const mod = await import("../lib/legendum.js");
-  const legendum = mod.default || mod;
-  const acct = legendum.account(key);
-  const whoami = await acct.whoami();
-  const email = whoami.email;
-
-  // Find or create user
-  let user = getUserByEmail(email);
-  if (!user) {
-    const userId = createUser(email);
-    user = { id: userId, email, legendum_token: null, db_path: `data/user${userId}.db` };
+  if (existing) {
+    return { ok: true, data: { email: existing.email } };
   }
 
-  // Store hashed key
-  storeAccountKey(user.id, key);
-  return { ok: true, data: { email } };
-});
+  // Validate against Legendum
+  const mod = await import("../lib/legendum.js");
+  const legendum = mod.default || mod;
+  try {
+    const acct = legendum.account(key);
+    const whoami = await acct.whoami();
+    const email = whoami.email;
+    if (!email) {
+      return {
+        ok: false,
+        error: "invalid_key",
+        message: "Could not verify account key",
+      };
+    }
+
+    // Find or create user
+    let user = getUserByEmail(email);
+    if (!user) {
+      const userId = createUser(email);
+      user = {
+        id: userId,
+        email,
+        legendum_token: null,
+        db_path: `data/user${userId}.db`,
+        created_at: "",
+      };
+    }
+
+    // Store key hash
+    storeAccountKey(user.id, key);
+
+    return { ok: true, data: { email } };
+  } catch (e) {
+    return { ok: false, error: "invalid_key", message: (e as Error).message };
+  }
+})
 ```
 
-Keys hash with SHA-256 and store in `account_keys` table alongside the user ID:
+Keys hash via SHA-256 and store in the `account_keys` table with the user ID:
 
 ```typescript
 // src/lib/auth.ts
@@ -80,108 +111,188 @@ export function storeAccountKey(userId: number, key: string): void {
 }
 ```
 
-API middleware extracts and validates Bearer tokens:
+API middleware validates Bearer tokens:
 
 ```typescript
 // src/routes/api.ts — authGuard
 function authGuard(headers: Record<string, string | undefined>) {
+  // Self-hosted mode: no auth, single local user.
+  if (isSelfHosted()) {
+    ensureLocalUser();
+    return {
+      user: {
+        id: LOCAL_USER_ID,
+        email: LOCAL_USER_EMAIL,
+        legendum_token: null,
+      },
+      db: getUserDb(LOCAL_USER_ID),
+    };
+  }
+
   const token = extractBearerToken(headers.authorization);
   if (!token) throw new Error("Missing Authorization header");
+
   const user = validateAccountKey(token);
   if (!user) throw new Error("Invalid account key");
-  return { user, db: getUserDb(user.id) };
-}
 
-export function extractBearerToken(header: string | null | undefined): string | null {
-  if (!header) return null;
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  return match ? match[1] : null;
+  return { user, db: getUserDb(user.id) };
 }
 ```
 
 ## Web Sessions (OAuth)
 
-Web access uses cookie-based sessions via Legendum OAuth. The `/login` route redirects to Legendum; `/auth/callback` exchanges the code and issues a session cookie:
+Web access relies on cookie-based sessions via Legendum OAuth. The `/login` route redirects to Legendum; `/auth/callback` exchanges the code, creates a session, and sets a cookie.
 
 ```typescript
-// src/routes/auth.ts
-.get("/login", async ({ cookie: { wikis_state }, redirect }) => {
-  const client = getClient(); // Legendum client if hosted
+// src/routes/auth.ts — /login and /auth/callback
+.get("/login", async ({ cookie: { wikis_state }, redirect, set }) => {
+  const client = getClient();
+  if (!client) {
+    set.status = 404;
+    return "Login with Legendum is not configured on this server.";
+  }
+
   const state = crypto.randomUUID();
-  wikis_state.value = state; // Anti-CSRF state
+  wikis_state.value = state;
+  wikis_state.httpOnly = true;
+  wikis_state.sameSite = "lax";
+  wikis_state.maxAge = STATE_MAX_AGE;
+
+  saveState(state);
+
   const linkData = await client.requestLink();
-  const url = client.authAndLinkUrl({ redirectUri: `${BASE_URL}/auth/callback`, state, linkCode: linkData.code });
+  const url = client.authAndLinkUrl({
+    redirectUri: `${BASE_URL}/auth/callback`,
+    state,
+    linkCode: linkData.code,
+  });
+
   return redirect(url);
 })
 
-.get("/auth/callback", async ({ query, cookie: { wikis_session, wikis_state } }) => {
+.get("/auth/callback", async ({
+  query,
+  cookie: { wikis_session, wikis_state },
+  redirect,
+  set,
+}) => {
   const { code, state } = query;
-  if (!validateState(state, wikis_state.value as string)) return "Invalid state";
 
-  const exchanged = await client.exchangeCode(code, `${BASE_URL}/auth/callback`);
-  const email = exchanged.email;
+  if (!code || !state) {
+    set.status = 400;
+    return "Missing code or state";
+  }
+
+  if (!validateState(state, wikis_state.value as string | undefined)) {
+    set.status = 403;
+    return "Invalid state parameter";
+  }
+  wikis_state.remove();
+
+  const client = getClient();
+  if (!client) {
+    set.status = 500;
+    return "Legendum not configured";
+  }
+
+  let exchanged = await client.exchangeCode(code, `${BASE_URL}/auth/callback`);
+  const { email } = exchanged;
+  if (!email) {
+    set.status = 502;
+    return "Could not read email from Legendum";
+  }
+
   let userId = getUserByEmail(email)?.id ?? createUser(email);
 
-  // Store billing token if present
-  const serviceToken = exchanged.account_token ?? exchanged.legendum_token;
+  const serviceToken = exchanged.account_token ?? exchanged.legendum_token ?? exchanged.token;
   if (serviceToken) {
     getGlobalDb().prepare("UPDATE users SET legendum_token = ? WHERE id = ?").run(serviceToken, userId);
   }
 
-  // Create session cookie
-  const sessionToken = createSession(userId); // Inserts into sessions table
+  const sessionToken = createSession(userId);
   wikis_session.value = sessionToken;
   wikis_session.httpOnly = true;
-  wikis_session.maxAge = SESSION_MAX_AGE; // 30 days
+  wikis_session.sameSite = "lax";
+  wikis_session.maxAge = SESSION_MAX_AGE;
+  wikis_session.path = "/";
+
   return redirect("/");
 });
+```
 
+Sessions store in the global database:
+
+```typescript
+// src/routes/auth.ts
 export function getSessionUser(token: string): number | null {
-  return getGlobalDb().prepare("SELECT user_id FROM sessions WHERE token = ?").get(token)?.user_id ?? null;
+  const row = getGlobalDb()
+    .prepare("SELECT user_id FROM sessions WHERE token = ?")
+    .get(token) as { user_id: number } | null;
+  return row?.user_id ?? null;
 }
 ```
 
-Web routes resolve users via cookies or tokens:
+Web routes resolve users from headers and cookies:
 
 ```typescript
-// src/routes/web.ts
+// src/routes/web.ts — resolveUser
 function resolveUser(headers: Record<string, string | undefined>): { id: number } | null {
+  // Self-hosted: every visitor is the local user.
+  if (isSelfHosted()) {
+    ensureLocalUser();
+    return { id: LOCAL_USER_ID };
+  }
+
+  const cookie = headers.cookie;
   const bearerToken = extractBearerToken(headers.authorization);
   if (bearerToken) return validateAccountKey(bearerToken);
 
-  const cookie = headers.cookie;
-  const sessionMatch = cookie?.match(/wikis_session=([^;]+)/);
-  if (sessionMatch) return { id: getSessionUser(sessionMatch[1]) ?? 0 };
+  if (!cookie) return null;
 
-  const tokenMatch = cookie?.match(/wikis_token=([^;]+)/);
+  const sessionMatch = cookie.match(/wikis_session=([^;]+)/);
+  if (sessionMatch) {
+    const userId = getSessionUser(sessionMatch[1]);
+    if (userId) return { id: userId };
+  }
+
+  const tokenMatch = cookie.match(/wikis_token=([^;]+)/);
   if (tokenMatch) return validateAccountKey(tokenMatch[1]);
 
   return null;
 }
 ```
 
-Logout deletes the session: `POST /auth/logout`.
+Logout deletes the session via `POST /auth/logout`.
 
 ## Public Access and Fallback
 
-Public wikis store in `data/public.db`. Web routes check user DB first, then public DB. MCP (`POST /mcp`) uses authenticated DB if token provided, else public DB:
+Public wikis reside in `data/public.db`. Web routes query the user database first, then public. The MCP endpoint (`POST /mcp`) uses an authenticated database if a token provides one, otherwise public:
 
 ```typescript
 // src/routes/api.ts — /mcp
 .post("/mcp", async ({ body, headers }) => {
-  const token = extractBearerToken(headers.authorization);
   let db: Database;
-  if (token) {
-    const user = validateAccountKey(token);
-    if (user) db = getUserDb(user.id);
+  if (isSelfHosted()) {
+    ensureLocalUser();
+    db = getUserDb(LOCAL_USER_ID);
+  } else {
+    const token = extractBearerToken(headers.authorization);
+    if (token) {
+      const user = validateAccountKey(token);
+      if (user) {
+        db = getUserDb(user.id);
+      }
+    }
   }
   if (!db) db = getPublicDb();
-  return await handleMcpRequest(db, body as Record<string, unknown>);
+
+  const result = await handleMcpRequest(db, body as Record<string, unknown>);
+  return result;
 });
 ```
 
-See [mcp-integration.md](mcp-integration.md) for MCP tools.
+Details appear in [mcp-integration.md](mcp-integration.md).
 
 ## Self-Hosting Considerations
 
-In self-hosted mode (`wikis serve`), Legendum integration is optional. Account keys validate locally without external calls if no `LEGENDUM_API_KEY`. OAuth skips if unconfigured. Users provide LLM keys directly ([configuration.md](configuration.md)), bypassing billing ([self-hosting.md](self-hosting.md)).
+Self-hosted mode (`wikis serve`) activates without Legendum credentials. The `authGuard` and `resolveUser` return the local user (`id: 0`, `LOCAL_USER_EMAIL: "local@example.com"`) for all requests, bypassing token checks. Account keys validate locally via hashing without external calls. OAuth skips if unconfigured. Users supply LLM keys directly ([configuration.md](configuration.md)), avoiding billing ([self-hosting.md](self-hosting.md)).

@@ -1,10 +1,10 @@
 # Syncing Mechanism
 
-The syncing mechanism synchronizes wiki files between a local filesystem and the remote server via API endpoints. Wiki files consist of generated markdown pages (e.g., `index.md`, `architecture.md`) stored in the local project directory and mirrored in the server's per-user SQLite database. It employs a manifest-based approach to efficiently detect changes, generate a sync plan, and execute targeted pushes, pulls, deletions, or conflict resolutions. This design avoids transferring unchanged files, minimizes bandwidth, and resolves conflicts via last-write-wins using modification timestamps.
+The syncing mechanism synchronizes wiki files between a local filesystem and the remote server via API endpoints. Wiki files are generated markdown pages (e.g., `index.md`, `architecture.md`) stored in the local project directory and mirrored in the server's per-user SQLite database within the `wiki_files` table. It uses a manifest-based approach for efficient change detection, plan generation, and execution of targeted pushes, pulls, deletions, or conflict resolutions. This design minimizes bandwidth by avoiding transfers of unchanged files and employs last-write-wins resolution based on modification timestamps.
 
 ## Manifest Format
 
-A manifest is a dictionary mapping file paths to metadata: a content hash (SHA-256 prefix) and ISO 8601 modification timestamp. This enables precise change detection without sending file contents during planning.
+A manifest maps file paths to metadata: a content hash (first 16 characters of SHA-256 hex digest) and an ISO 8601 modification timestamp. Manifests enable change detection without transmitting file contents during planning.
 
 ```typescript
 // src/lib/sync.ts
@@ -16,7 +16,7 @@ export interface FileEntry {
 export type Manifest = Record<string, FileEntry>;
 ```
 
-The server builds the remote manifest from the `wiki_files` table:
+The server constructs the remote manifest from all entries in `wiki_files` (including soft-deleted files):
 
 ```typescript
 // src/lib/storage.ts
@@ -36,50 +36,51 @@ export function getManifest(
 }
 ```
 
-Locally, the CLI scans the filesystem, computes hashes with `hashContent(content)`, and builds a manifest analogously.
+The client scans the local filesystem, computes `hashContent(content)` for each file, records `fs.stat.mtime.toISOString()`, and builds an equivalent manifest.
 
 ## Sync Plan Generation
 
-The core logic resides in `diffManifests(localManifest, remoteManifest)`, which produces a [SyncPlan](api-reference.md#syncplan) dictating actions:
+The `diffManifests(localManifest, remoteManifest)` function generates a [SyncPlan](api-reference.md#syncplan) specifying required actions:
 
 ```typescript
 // src/lib/sync.ts
 export interface SyncPlan {
   push: string[];        // Local newer/new files
   pull: string[];        // Remote newer/new files
-  conflicts: string[];   // Changed on both (flagged, resolved by timestamp)
-  deleteLocal: string[]; // Deleted remotely
-  deleteRemote: string[]; // Deleted locally
+  conflicts: string[];   // Changed on both sides (flagged but resolved by timestamp)
+  deleteLocal: string[]; // Deleted remotely (soft-deleted on server)
+  deleteRemote: string[]; // Deleted locally (requires server-side marking)
 }
 ```
 
-The function iterates over all unique paths:
+The algorithm processes all unique paths from both manifests (optionally using a `lastKnown` manifest from the prior sync):
 
-- Identical hash: Skip (in sync).
-- Local-only new: `push`.
-- Remote-only new: `pull`.
-- Local-only (previously known): `deleteLocal`.
-- Remote-only (previously known): `deleteRemote`.
+- Identical hash and timestamp: Skip (in sync).
+- Local-only path (new): Add to `push`.
+- Remote-only path (new): Add to `pull`.
+- Local-only (previously known): Add to `deleteLocal`.
+- Remote-only (previously known): Add to `deleteRemote`.
 - Divergent hashes:
-  - Unchanged since last sync: Push/pull the changed side.
-  - Changed both sides: Flag as `conflicts`; resolve via `modified` timestamp (later wins, added to `push` or `pull`).
+  - One side unchanged: Push or pull the changed side.
+  - Both changed: Flag in `conflicts`; resolve via `modified` timestamp (newer wins, added to `push` or `pull`).
 
-This last-write-wins strategy prioritizes recency while flagging true conflicts for potential manual review. An optional `lastKnown` manifest tracks prior states but defaults to `{}`.
+This last-write-wins approach prioritizes recency, automatically resolving conflicts while flagging them for user awareness.
 
 ## API Endpoints
 
+All endpoints require authentication via Bearer token (account key in hosted mode; implicit local user in [self-hosting.md]). The `authGuard` middleware resolves the user database.
+
 ### /api/sync (POST)
 
-The client sends its local manifest; the server responds with a plan.
+The client submits `{ wiki: string; files: Manifest }`. The server auto-creates the wiki if absent and returns the sync plan.
 
 ```typescript
 // src/routes/api.ts
 .post("/sync", async ({ body, headers }) => {
   const { db } = authGuard(headers);
-  const { wiki: wikiName, files: localManifest } = body as {
-    wiki: string;
-    files: Manifest;
-  };
+  const b = asObject(body);
+  const wikiName = requireString(b, "wiki");
+  const localManifest = b.files as Manifest;
 
   // Get or create wiki
   let wiki = db
@@ -99,28 +100,51 @@ The client sends its local manifest; the server responds with a plan.
 
 ### /api/push (POST)
 
-Uploads changed files; server upserts into `wiki_files` and indexes for [search-features.md].
+Uploads specified files `{ wiki: string; files: Array<{ path: string; content: string; modified: string }> }`. Requires existing wiki; upserts via `ON CONFLICT` and indexes chunks for [search-features.md] (embeddings disabled to prioritize speed).
 
 ```typescript
 .post("/push", async ({ body, headers }) => {
-  // ... auth + wiki lookup ...
+  const { db } = authGuard(headers);
+  const b = asObject(body);
+  const wikiName = requireString(b, "wiki");
+  const files = requireArray(b, "files") as {
+    path: string;
+    content: string;
+    modified: string;
+  }[];
+
+  const wiki = db
+    .prepare("SELECT id FROM wikis WHERE name = ?")
+    .get(wikiName) as { id: number } | null;
+  if (!wiki) return { ok: false, error: "wiki_not_found" };
+
   for (const file of files) {
     upsertFile(db, wiki.id, file.path, file.content, file.modified);
     await indexFile(db, wiki.id, "wiki_chunks", file.path, file.content, {
       embeddings: false,
     });
   }
+
   return { ok: true, data: { pushed: files.length } };
 })
 ```
 
 ### /api/pull (POST)
 
-Downloads files by path.
+Retrieves files by path `{ wiki: string; paths: string[] }`. Excludes soft-deleted files (`deleted = TRUE`).
 
 ```typescript
 .post("/pull", async ({ body, headers }) => {
-  // ... auth + wiki lookup ...
+  const { db } = authGuard(headers);
+  const b = asObject(body);
+  const wikiName = requireString(b, "wiki");
+  const paths = requireArray(b, "paths") as string[];
+
+  const wiki = db
+    .prepare("SELECT id FROM wikis WHERE name = ?")
+    .get(wikiName) as { id: number } | null;
+  if (!wiki) return { ok: false, error: "wiki_not_found" };
+
   const files = paths
     .map((p) => getFile(db, wiki.id, p))
     .filter((f): f is NonNullable<typeof f> => f != null)
@@ -136,26 +160,32 @@ Downloads files by path.
 
 ## Client Workflow
 
-1. Build local manifest from filesystem.
-2. POST `/api/sync` with `{wiki, files: localManifest}` → receive plan.
-3. **Push**: POST `/api/push` with changed files' contents.
-4. **Pull**: POST `/api/pull` with paths → write files locally, update manifest.
-5. **Deletes**: Remove files locally/remotely as indicated (server supports via `wiki_files.deleted` flag).
-6. Rebuild local manifest; repeat if needed.
+The CLI (`wikis sync`) executes:
 
-This loop ensures eventual consistency with minimal data transfer.
+1. Scans local filesystem to build `localManifest`.
+2. POST `/api/sync` with `{ wiki, files: localManifest }` → receives `plan`.
+3. **Push**: POST `/api/push` with contents of `plan.push` + `plan.conflicts` (where local wins).
+4. **Pull**: POST `/api/pull` with `plan.pull` + `plan.conflicts` (where remote wins); writes files locally.
+5. **Deletes**:
+   - `plan.deleteLocal`: Remove paths from local filesystem (server soft-deleted via `deleted = TRUE`).
+   - `plan.deleteRemote`: DELETE `/wikis/${wiki}/pages/${path}` for each (marks server-side `deleted = TRUE`, deletes chunks, triggers regeneration).
+6. Rebuilds `localManifest`; repeats if plan non-empty (ensures convergence).
+
+Soft deletes (`deleted = TRUE`) persist in manifests (for detection) but exclude from pulls/views. Regeneration skips deleted pages.
 
 ## Conflict Resolution
 
-Conflicts occur when both sides change a file (different hashes). The plan flags them but resolves automatically: the side with the later `modified` timestamp wins (pushed or pulled). This simplifies sync but risks data loss; clients may prompt users for conflicts.
+Divergent files (different hashes) are flagged in `plan.conflicts` but auto-resolved: the newer `modified` timestamp determines push/pull. Clients may log conflicts for review. This avoids complex merges while favoring recency.
 
 ## Design Decisions
 
-- **Efficiency**: Manifests (~1KB) replace full diffs; only changed files transfer.
-- **Simplicity**: No three-way merge; last-write-wins avoids complex resolution.
+- **Efficiency**: Small manifests (~1KB) enable cheap planning; only deltas transfer.
+- **Simplicity**: No three-way merge; timestamp-based last-write-wins suffices for developer edits vs. AI regenerations.
 - **Idempotency**: `upsertFile` uses `ON CONFLICT` for safe overwrites.
-- **Search Integration**: Pushes trigger [search-features.md] indexing.
-- **Wiki Isolation**: Per-wiki (`wiki_id`) scoping prevents cross-project leaks.
-- **Auth**: Bearer token via account key ([authentication.md]).
+- **Search Integration**: Pushes index into [search-features.md] (FTS chunks; embeddings optional).
+- **Wiki Isolation**: `wiki_id` scoping prevents leaks across projects.
+- **Progressive Creation**: `/sync` creates wikis; `/push`/ `/pull` require existence.
+- **Soft Deletes**: Preserve history/manifest presence; filter at read-time.
+- **Auth Modes**: Bearer tokens ([authentication.md]); self-hosted skips auth ([self-hosting.md]).
 
-This mechanism powers CLI commands like `wikis sync`, balancing speed and reliability for developer workflows.
+This powers `wikis sync`, enabling seamless local editing with remote AI-generated content and search.

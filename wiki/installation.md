@@ -1,14 +1,14 @@
 # Installation
 
-The "wikis" project provides a CLI tool for managing personal AI-generated wikis. This page outlines the steps to install and set up the CLI, enabling users to watch project files, generate wiki pages via AI agents, and sync with a server. The process emphasizes simplicity and automation through a shell script hosted in the server's public directory. This script manages dependencies, including the Bun runtime, to ensure compatibility across macOS, Linux, and WSL.
+The "wikis" project provides a CLI tool for managing personal AI-generated wikis. This page outlines the steps to install and set up the CLI, which enables watching project files, generating wiki pages via AI agents, and syncing with a server. The installation process prioritizes simplicity and cross-platform compatibility on macOS, Linux, and WSL through a shell script served from the server's public directory. This script handles dependency management, including automatic installation of the Bun runtime, chosen for its superior performance in executing TypeScript code and managing packages compared to Node.js.
 
 ## Prerequisites
 
-The CLI requires a Unix-like shell, such as Bash or Zsh, as the installation script uses shell commands for environment detection and setup. Bun serves as the primary runtime, selected for its performance in executing TypeScript code and handling packages faster than Node.js. The script automatically detects and installs Bun if absent, isolating it to the user's configuration directory.
+A Unix-like shell such as Bash or Zsh is required, as the installation script relies on shell commands for environment detection and setup. Bun functions as the primary runtime. The script detects Bun's presence and installs it if missing, isolating it within the user's `~/.config/wikis` directory to avoid system-wide changes.
 
 ## Installation Steps
 
-Installation uses a single command to fetch the shell script from the server's public endpoint. The server exposes static files from `PUBLIC_DIR` at `/public/*`, with content-type handling for markdown (`.md`) and text (`.txt`) files:
+The server exposes static files from `PUBLIC_DIR` at the `/public/*` route, with specialized content-type handling for Markdown (`.md`) and text (`.txt`) files:
 
 ```typescript
 .get("/public/*", ({ params }) => {
@@ -29,36 +29,36 @@ Installation uses a single command to fetch the shell script from the server's p
 })
 ```
 
-The script clones the repository into `~/.config/wikis/src`, installs dependencies with `bun install`, and creates a global symlink for the `wikis` command using Bun's `link` feature. This leverages the `package.json` `bin` field (`"wikis": "cli/main.ts"`), placing the executable in the global PATH without requiring npm or Homebrew.
-
-Execute in a terminal:
+Installation fetches this script via a single command:
 
 ```bash
 curl -fsSL https://wikis.fyi/public/install.sh | sh
 ```
 
-The script executes these steps:
+The script performs these steps:
 
-1. Detects Bun; downloads and installs from bun.sh if missing.
+1. Detects Bun and installs it from bun.sh if absent.
 2. Clones or updates the repository into `~/.config/wikis/src`.
-3. Runs `bun install` for dependencies.
-4. Executes `bun link` for global `wikis` access.
+3. Executes `bun install` to manage dependencies.
+4. Runs `bun link`, leveraging the `package.json` `bin` field (`"wikis": "cli/main.ts"`) to create a global symlink for the `wikis` command in the PATH, bypassing npm or Homebrew.
 
-This isolates the installation in `~/.config/wikis`, avoiding global or project pollution. Updates run via `wikis update`, which pulls changes and reinstalls dependencies. See [cli-commands.md](cli-commands.md) for CLI details.
+This approach confines the installation to `~/.config/wikis`, preventing global namespace pollution. Updates occur via `wikis update`, which pulls repository changes and reinstalls dependencies. See [cli-commands.md](cli-commands.md) for command details.
 
 ## Verifying the Installation
 
-Verify by checking help output, which lists commands and confirms PATH integration:
+Confirm installation by displaying help output, which lists available commands and verifies PATH integration:
 
 ```bash
 wikis --help
 ```
 
-Success shows commands like `wikis init` (project setup) and `wikis serve` (local server). Failures often indicate PATH issues; restart the shell or check `~/.config/wikis`.
+Success displays commands such as `wikis init` for project setup and `wikis serve` for the local server. PATH-related failures require shell restart or inspection of `~/.config/wikis`.
+
+A machine-readable overview for LLMs appears at `/llms.txt` once the server runs, served similarly from `PUBLIC_DIR/llms.txt`.
 
 ## Self-Hosting the Server
 
-For local operation without the hosted service at wikis.fyi, run `wikis serve` post-CLI installation. This starts the full Elysia server, binding via environment variables or `config/wikis.yml`:
+For operation without the hosted service at wikis.fyi, install the CLI first, then execute `wikis serve`. This launches the complete Elysia server, bound by environment variables or `config/wikis.yml`:
 
 ```typescript
 export const PORT = Number(process.env.PORT || rawConfig.port || 3000);
@@ -73,15 +73,15 @@ const app = new Elysia()
 console.log(`wikis.fyi running at http://${HOST}:${PORT}`);
 ```
 
-Defaults to `http://0.0.0.0:3000`, overridable by `PORT`/`HOST` or config. A health endpoint confirms readiness:
+Defaults bind to `http://0.0.0.0:3000`, configurable via `PORT`/`HOST` or the YAML file. A health endpoint verifies readiness:
 
 ```bash
 curl http://localhost:3000/health
 ```
 
-Expected: `{"ok":true}`.
+Expected response: `{"ok":true}`.
 
-LLM-driven generation activates with API keys from environment or config—the first available provider enables:
+AI-driven generation requires API keys from environment variables or config—the first available provider activates:
 
 ```typescript
 export const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || (rawConfig.anthropic_api_key as string);
@@ -90,10 +90,10 @@ export const XAI_API_KEY = process.env.XAI_API_KEY || (rawConfig.xai_api_key as 
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || (rawConfig.gemini_api_key as string);
 ```
 
-Embeddings use Ollama at `http://localhost:11434` (via `OLLAMA_URL`/`OLLAMA_EMBED_MODEL`). See [search-features.md](search-features.md) for hybrid FTS5 + vector details and [ai-generation.md](ai-generation.md) for agent logic.
+Embeddings leverage Ollama at `http://localhost:11434` (configurable via `OLLAMA_URL`/`OLLAMA_EMBED_MODEL`). See [search-features.md](search-features.md) for hybrid FTS5 + vector search details and [ai-generation.md](ai-generation.md) for agent orchestration.
 
-The CLI daemon targets the local instance by setting `api_url: http://localhost:3000/api` in `~/.config/wikis/config.yml`. Refer to [self-hosting.md](self-hosting.md) for setup, [architecture.md](architecture.md) for components, [configuration.md](configuration.md) for options, [syncing-mechanism.md](syncing-mechanism.md) for sync, and [cli-commands.md](cli-commands.md) for daemon control via `wikis start`.
+The CLI daemon connects to the local instance by configuring `api_url: http://localhost:3000/api` in `~/.config/wikis/config.yml`. Consult [self-hosting.md](self-hosting.md) for complete setup, [architecture.md](architecture.md) for component integration, [configuration.md](configuration.md) for options, [syncing-mechanism.md](syncing-mechanism.md) for synchronization, and [cli-commands.md](cli-commands.md) for daemon management via `wikis start`.
 
 ## Next Steps
 
-Run `wikis init` in a project to create `wiki/config.yml` and trigger initial generation. See [cli-commands.md](cli-commands.md) for commands, [configuration.md](configuration.md) for globs/options, and [syncing-mechanism.md](syncing-mechanism.md) for watching/sync.
+Execute `wikis init` in a project directory to generate `wiki/config.yml` and initiate the first build. Refer to [cli-commands.md](cli-commands.md) for commands, [configuration.md](configuration.md) for globs and settings, and [syncing-mechanism.md](syncing-mechanism.md) for file watching and sync.
