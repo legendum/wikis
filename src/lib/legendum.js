@@ -200,7 +200,10 @@ function create(config) {
      * @returns {Promise<{ balance: number, held: number }>}
      */
     async balance(accountToken) {
-      return request("GET", `/api/balance?token=${encodeURIComponent(accountToken)}`);
+      return request(
+        "GET",
+        `/api/balance?account_token=${encodeURIComponent(accountToken)}`,
+      );
     },
 
     /**
@@ -296,8 +299,8 @@ function create(config) {
      * Call this server-side in your callback handler.
      * @param {string} code - The code from the redirect query string
      * @param {string} redirectUri - Must match the original authorize request
-     * @returns {Promise<{ email: string, linked: boolean, legendum_token?: string }>}
-     *   When `linked` is true, `legendum_token` is the opaque account-service token for charge/balance/reserve.
+     * @returns {Promise<{ email: string, linked: boolean, account_token?: string }>}
+     *   When `linked` is true, `account_token` is the opaque account-service token for charge/balance/reserve.
      */
     async exchangeCode(code, redirectUri) {
       return request("POST", "/api/auth/token", { code: code, redirect_uri: redirectUri });
@@ -308,7 +311,7 @@ function create(config) {
      * The user provides their account key (lak_...), and this creates
      * the account-service link, returning a token for charging.
      * @param {string} accountKey - The account key (lak_...)
-     * @returns {Promise<{ token: string, email: string }>}
+     * @returns {Promise<{ account_token: string, email: string }>}
      */
     async linkAccount(accountKey) {
       return request("POST", "/api/agent/link-service", { api_key: apiKey, secret: secret, account_key: accountKey });
@@ -991,7 +994,10 @@ function mockSdk(handlers) {
     authAndLinkUrl: h.authAndLinkUrl || ((opts) => "http://mock.legendum.test/auth/authorize?state=" + (opts?.state || "")
         + "&intent=login_link&link_code=" + encodeURIComponent((opts?.linkCode) || "")),
     exchangeCode: h.exchangeCode || (async () => ({ email: "mock@test.com", linked: false })),
-    linkAccount: h.linkAccount || (async () => ({ token: "mock_legendum_token", email: "mock@test.com" })),
+    linkAccount: h.linkAccount || (async () => ({
+      account_token: "mock_account_token",
+      email: "mock@test.com",
+    })),
   };
   m.tab = h.tab || ((accountToken, description, opts) => tab(accountToken, description, Object.assign({}, opts || {}, { client: m })));
   _mockClient = m;

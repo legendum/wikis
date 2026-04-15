@@ -21,7 +21,6 @@ export interface LegendumServiceClient {
   pollLink(requestId: string): Promise<{
     status: string;
     account_token?: string;
-    legendum_token?: string;
   }>;
   authUrl(opts: { redirectUri: string; state: string }): string;
   authAndLinkUrl(opts: {
@@ -35,11 +34,11 @@ export interface LegendumServiceClient {
   ): Promise<{
     email: string;
     linked: boolean;
-    legendum_token?: string;
     account_token?: string;
-    token?: string;
   }>;
-  linkAccount(accountKey: string): Promise<{ token: string; email: string }>;
+  linkAccount(
+    accountKey: string,
+  ): Promise<{ account_token: string; email: string }>;
   /** Batched micro-charges; uses this client for `charge` (same as top-level `tab` with `{ client }`). */
   tab(
     accountToken: string,
@@ -52,7 +51,6 @@ export interface LegendumServiceClient {
   ): Promise<{
     status: string;
     account_token?: string;
-    legendum_token?: string;
   }>;
 }
 

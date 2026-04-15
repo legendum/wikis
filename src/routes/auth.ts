@@ -126,8 +126,6 @@ export const authRoutes = new Elysia()
         email: string;
         linked?: boolean;
         account_token?: string;
-        legendum_token?: string;
-        token?: string;
       };
       let exchanged: ExchangeResult;
       try {
@@ -155,9 +153,8 @@ export const authRoutes = new Elysia()
         userId = createUser(email);
       }
 
-      // Store Legendum billing token if present
-      const serviceToken =
-        exchanged.account_token ?? exchanged.legendum_token ?? exchanged.token;
+      // Store Legendum billing token if present (API field: account_token)
+      const serviceToken = exchanged.account_token;
       if (serviceToken) {
         getGlobalDb()
           .prepare("UPDATE users SET legendum_token = ? WHERE id = ?")

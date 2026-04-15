@@ -204,7 +204,7 @@ Web access relies on cookie-based sessions via Legendum OAuth. The `/login` rout
 
   let userId = getUserByEmail(email)?.id ?? createUser(email);
 
-  const serviceToken = exchanged.account_token ?? exchanged.legendum_token ?? exchanged.token;
+  const serviceToken = exchanged.account_token;
   if (serviceToken) {
     getGlobalDb().prepare("UPDATE users SET legendum_token = ? WHERE id = ?").run(serviceToken, userId);
   }
