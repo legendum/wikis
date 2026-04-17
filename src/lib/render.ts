@@ -68,8 +68,9 @@ function extractFencedCodeBlocks(md: string): {
     }
 
     const idx = codeBlocks.length;
+    const langClass = lang || "text";
     codeBlocks.push(
-      `<pre><code class="language-${lang || "text"}">${escapeHtml(trimmed)}</code></pre>`,
+      `<pre class="language-${langClass}"><code class="language-${langClass}">${escapeHtml(trimmed)}</code></pre>`,
     );
     out.push(`%%CODEBLOCK_${idx}%%`);
   }

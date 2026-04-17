@@ -35,3 +35,13 @@
 - Created: page.md, slug.md, page-name.md
 - Updated: architecture.md, installation.md, cli-commands.md, ai-generation.md, syncing-mechanism.md, search-features.md, self-hosting.md, mcp-integration.md, api-reference.md, authentication.md, database-storage.md, configuration.md, page.md
 - Tokens: 473584 in / 25973 out
+
+## [2026-04-15 18:40] agent run | source files changed
+- Created: page-name.md, slug.md, missing.md, path.md, slugify-helpers.md
+- Updated: installation.md, ai-generation.md, syncing-mechanism.md, search-features.md, api-reference.md, page.md, cli-commands.md, authentication.md, page.md, cli-commands.md, api-reference.md
+- Tokens: 547852 in / 20800 out
+
+## [2026-04-17 02:18] agent run | source files changed
+- Created: installation.md, page-name.md, missing-page.md
+- Updated: page.md, missing.md, page.md, cli-commands.md, ai-generation.md
+- Tokens: 238763 in / 9335 out

@@ -185,7 +185,7 @@ export async function indexFile(
 ## Integration and Extensibility
 
 - **Git**: Daemon uses SHAs for diffs. See [configuration.md](configuration.md).
-- **MCP**: Tools (`search_wiki`, `read_page`, `list_pages`, `list_wikis`) at `/mcp`. See [mcp-integration.md](mcp-integration.md).
+- **MCP**: Tools (`search_wiki`, `read_page`, `list_pages`, `list_wikis`) at `/mcp`. See [mcp-integration.md](api-reference.md).
 - **Self-hosting**: `wikis serve`; user LLM keys/Ollama, no billing. See [self-hosting.md](self-hosting.md).
 - **Auth**: Legendum account keys (`lak_...`, validated via `validateAccountKey`/`hash`). See [authentication.md](authentication.md).
 

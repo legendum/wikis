@@ -54,7 +54,7 @@ Initialize a wiki in the project directory:
 wikis init
 ```
 
-This creates `wiki/config.yml` and registers the project with the daemon. See [installation.md](installation.md) and [cli-commands.md](cli-commands.md).
+This creates `wiki/config.yml` and registers the project with the daemon. See [installation.md](cli-commands.md) and [cli-commands.md](cli-commands.md).
 
 ### Environment Variables
 
@@ -124,7 +124,7 @@ function authGuard(headers: Record<string, string | undefined>) {
 }
 ```
 
-The local user (`LOCAL_USER_ID: 0`, `LOCAL_USER_EMAIL: 'local@example.com'`) owns all wikis. Account keys (prefixed `lak_...`) can hash and store in `data/wikis.db` for explicit auth. See [authentication.md](authentication.md). Endpoints like `/mcp` use the local user database or fall back to `data/public.db` if unauthenticated. See [mcp-integration.md](mcp-integration.md).
+The local user (`LOCAL_USER_ID: 0`, `LOCAL_USER_EMAIL: 'local@example.com'`) owns all wikis. Account keys (prefixed `lak_...`) can hash and store in `data/wikis.db` for explicit auth. See [authentication.md](authentication.md). Endpoints like `/mcp` use the local user database or fall back to `data/public.db` if unauthenticated. See [mcp-integration.md](api-reference.md).
 
 ## Configuration
 
@@ -203,6 +203,6 @@ Self-hosting emphasizes local autonomy:
 - [Authentication](authentication.md)
 - [Configuration](configuration.md)
 - [Database Storage](database-storage.md)
-- [MCP Integration](mcp-integration.md)
+- [MCP Integration](api-reference.md)
 - [Search Features](search-features.md)
 - [Syncing Mechanism](syncing-mechanism.md)

@@ -292,7 +292,7 @@ Public wikis reside in `data/public.db`. Web routes query the user database firs
 });
 ```
 
-Details appear in [mcp-integration.md](mcp-integration.md).
+Details appear in [mcp-integration.md](api-reference.md).
 
 ## Self-Hosting Considerations
 

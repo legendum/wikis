@@ -263,7 +263,7 @@ Embeddings fetch serially from Ollama (`/api/embeddings`).
 
 Web routes (`src/routes/web.ts`) render search results as HTML lists with snippets (plain-text, ~150 characters truncated at last space). Debounced input (500 ms) fetches `?q=<query>` via AJAX (`Accept: text/html`), populating `.search-results` with `<ul>`. Markdown responses (`/:wiki?q=<query>&.md`) list results as `- [path](link): preview` (~100 characters). Cross-wiki search at `/` lists results across user wikis as `<li><a href="/wiki/slug"><strong>wiki / title</strong> — preview</a></li>`.
 
-For details on MCP tools exposing `search_wiki` (numbered lists: `1. **page** (score: 0.XX)\n   preview...` ~200 characters), see [MCP Integration](mcp-integration.md). Supports public and authenticated wikis via `list_wikis`, `read_page`, `list_pages` at `/api/mcp`.
+For details on MCP tools exposing `search_wiki` (numbered lists: `1. **page** (score: 0.XX)\n   preview...` ~200 characters), see [MCP Integration](api-reference.md). Supports public and authenticated wikis via `list_wikis`, `read_page`, `list_pages` at `/api/mcp`.
 
 ## Design Decisions
 

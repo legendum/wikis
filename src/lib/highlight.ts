@@ -45,13 +45,14 @@ function unescapeHtml(s: string): string {
 }
 
 /**
- * Walk rendered HTML, find each `<pre><code class="language-XXX">…</code></pre>`
+ * Walk rendered HTML, find each `<pre class="language-…"><code class="language-…">…`
  * block emitted by `renderMarkdown`, and rewrite it with Prism-highlighted
- * spans. Unknown languages are left untouched (rendered as plain `<pre>`).
+ * spans. Unknown languages are left untouched (same markup, Prism theme still
+ * styles `pre.language-*` for a dark block).
  */
 export function highlightCodeBlocks(html: string): string {
   return html.replace(
-    /<pre><code class="language-([\w-]+)">([\s\S]*?)<\/code><\/pre>/g,
+    /<pre(?:\s+class="language-[^"]+")?\s*><code class="language-([\w-]+)">([\s\S]*?)<\/code><\/pre>/g,
     (match, rawLang: string, code: string) => {
       const lang = LANG_ALIASES[rawLang] || rawLang;
       const grammar = Prism.languages[lang];
