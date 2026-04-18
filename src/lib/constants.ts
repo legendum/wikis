@@ -50,6 +50,13 @@ export const LEGENDUM_BASE_URL =
   (rawConfig.legendum_base_url as string) ||
   "https://legendum.co.uk";
 
+/** Canonical origin for wiki HTML URLs in API JSON (`url` fields). Override for staging. */
+export const WIKIS_PUBLIC_ORIGIN = (
+  process.env.WIKIS_PUBLIC_ORIGIN ||
+  (rawConfig.wikis_public_origin as string) ||
+  "https://wikis.fyi"
+).replace(/\/+$/, "");
+
 // LLM (self-hosted mode — first configured provider wins)
 export const CLAUDE_API_KEY =
   process.env.CLAUDE_API_KEY || (rawConfig.anthropic_api_key as string);

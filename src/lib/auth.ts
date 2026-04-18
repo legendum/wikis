@@ -34,6 +34,24 @@ export function validateAccountKey(key: string): AccountKeyUser | null {
 }
 
 /**
+ * Resolve a Bearer token for API/MCP/web CLI: account key (`lak_…`) or opaque
+ * `users.legendum_token` (link-key / Chats2Me account token).
+ */
+export function validateBearerToken(token: string): AccountKeyUser | null {
+  const byKey = validateAccountKey(token);
+  if (byKey) return byKey;
+
+  const db = getGlobalDb();
+  const row = db
+    .prepare(
+      `SELECT u.id, u.email, u.legendum_token FROM users u WHERE u.legendum_token = ?`,
+    )
+    .get(token) as AccountKeyUser | null;
+
+  return row ?? null;
+}
+
+/**
  * Extract bearer token from Authorization header.
  */
 export function extractBearerToken(

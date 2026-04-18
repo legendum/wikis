@@ -4,6 +4,7 @@ import {
   extractBearerToken,
   storeAccountKey,
   validateAccountKey,
+  validateBearerToken,
 } from "../lib/auth";
 import {
   createUser,
@@ -16,7 +17,9 @@ import { indexFile } from "../lib/indexer";
 import { log } from "../lib/log";
 import { handleMcpRequest } from "../lib/mcp";
 import { isSelfHosted, LOCAL_USER_EMAIL, LOCAL_USER_ID } from "../lib/mode";
-import { search } from "../lib/search";
+import { CONTENT_TYPE_MARKDOWN_UTF8 } from "../lib/constants";
+import { wikiPageUrl, wikiRootUrl } from "../lib/public-wiki-urls";
+import { search, searchAllWikis, type SearchHit } from "../lib/search";
 import { getFile, getManifest, hashContent, upsertFile } from "../lib/storage";
 import { diffManifests, type Manifest } from "../lib/sync";
 
@@ -66,10 +69,34 @@ function authGuard(headers: Record<string, string | undefined>) {
   const token = extractBearerToken(headers.authorization);
   if (!token) throw new Error("Missing Authorization header");
 
-  const user = validateAccountKey(token);
+  const user = validateBearerToken(token);
   if (!user) throw new Error("Invalid account key");
 
   return { user, db: getUserDb(user.id) };
+}
+
+/** Markdown body for `GET /api/search.md` — links + snippets for agents (e.g. Chats2Me). */
+function formatSearchMarkdown(query: string, hits: SearchHit[]): string {
+  const lines: string[] = [`# Search: ${query}`, ""];
+  if (hits.length === 0) {
+    lines.push("_No results._");
+    return lines.join("\n");
+  }
+  const SNIP = 320;
+  for (let i = 0; i < hits.length; i++) {
+    const r = hits[i];
+    const url = wikiPageUrl(r.wiki, r.path);
+    const page = r.path.replace(/\.md$/i, "").replace(/\\/g, "/");
+    const label = `${r.wiki} / ${page}`.replace(/[[\]]/g, "");
+    const flat = r.chunk.replace(/\s+/g, " ").trim();
+    const snippet = flat.slice(0, SNIP);
+    const more = flat.length > SNIP ? "…" : "";
+    lines.push(
+      `${i + 1}. **[${label}](${url})** _(score ${r.score.toFixed(3)})_`,
+    );
+    lines.push(`   ${snippet}${more}`, "");
+  }
+  return lines.join("\n");
 }
 
 export const apiRoutes = new Elysia({ prefix: "/api" })
@@ -231,35 +258,74 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     }
   })
 
-  // --- Search ---
+  // --- Search (all wikis for this user — same as site search box) ---
 
-  .get("/search/:wiki", async ({ params, query, headers }) => {
+  .get("/search", async ({ query, headers }) => {
     const { db } = authGuard(headers);
     const q = query.q as string;
     if (!q)
       return { ok: false, error: "missing_query", message: "?q= is required" };
 
-    const wiki = db
-      .prepare("SELECT id FROM wikis WHERE name = ?")
-      .get(params.wiki) as { id: number } | null;
-    if (!wiki) return { ok: false, error: "wiki_not_found" };
-
     const limit = Number(query.limit) || undefined;
 
-    const results = await search(db, wiki.id, q, { limit });
+    const results = await searchAllWikis(db, q, { limit });
 
-    return { ok: true, data: { results } };
+    const resultsWithUrls = results.map((r) => ({
+      wiki: r.wiki,
+      path: r.path,
+      chunk: r.chunk,
+      score: r.score,
+      url: wikiPageUrl(r.wiki, r.path),
+    }));
+
+    return {
+      ok: true,
+      data: {
+        query: q,
+        results: resultsWithUrls,
+      },
+    };
+  })
+
+  .get("/search.md", async ({ query, headers }) => {
+    const { db } = authGuard(headers);
+    const q = query.q as string;
+    if (!q) {
+      return new Response(
+        "# Error\n\n`?q=` query parameter is required.\n",
+        {
+          status: 400,
+          headers: { "Content-Type": CONTENT_TYPE_MARKDOWN_UTF8 },
+        },
+      );
+    }
+
+    const limit = Number(query.limit) || undefined;
+    const hits = await searchAllWikis(db, q, { limit });
+    const body = formatSearchMarkdown(q, hits);
+    return new Response(body, {
+      headers: { "Content-Type": CONTENT_TYPE_MARKDOWN_UTF8 },
+    });
   })
 
   // --- Wiki management ---
 
   .get("/wikis", ({ headers }) => {
     const { db } = authGuard(headers);
-    const wikis = db
+    const rows = db
       .prepare(
         "SELECT id, name, visibility, created_at FROM wikis ORDER BY name",
       )
-      .all();
+      .all() as Array<{
+      id: number;
+      name: string;
+      visibility: string;
+      created_at: string;
+    }>;
+    const wikis = rows.map((w) => ({
+      ...w,
+      url: wikiRootUrl(w.name),
+    }));
     return { ok: true, data: { wikis } };
   })
 
@@ -320,45 +386,6 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     });
 
     return { ok: true, data: { deleted: pagePath } };
-  })
-
-  // --- Usage ---
-
-  .get("/usage", ({ headers }) => {
-    const { db } = authGuard(headers);
-
-    const period = new Date();
-    period.setDate(1);
-    const periodStart = period.toISOString().slice(0, 10);
-
-    const events = db
-      .prepare(`
-      SELECT type, SUM(count) as total
-      FROM events
-      WHERE created_at >= ?
-      GROUP BY type
-    `)
-      .all(periodStart) as { type: string; total: number }[];
-
-    const wikiCount = (
-      db.prepare("SELECT COUNT(*) as count FROM wikis").get() as {
-        count: number;
-      }
-    ).count;
-
-    const usage: Record<string, number> = {};
-    for (const e of events) usage[e.type] = e.total;
-
-    return {
-      ok: true,
-      data: {
-        period: period.toISOString().slice(0, 7),
-        wikis: wikiCount,
-        source_pushes: usage.source_push || 0,
-        wiki_updates: usage.wiki_update || 0,
-        credits_used: usage.credits_used || 0,
-      },
-    };
   })
 
   // --- Rebuild ---
@@ -472,7 +499,7 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     } else {
       const token = extractBearerToken(headers.authorization);
       if (token) {
-        const user = validateAccountKey(token);
+        const user = validateBearerToken(token);
         if (user) {
           db = getUserDb(user.id);
         }

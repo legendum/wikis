@@ -66,6 +66,7 @@ export interface LegendumReservation {
 
 /** Account client from `account()` (`lak_*` key). */
 export interface LegendumAccountClient {
+  /** Verified account identity (email). */
   whoami(): Promise<{ email?: string } & Record<string, unknown>>;
   balance(): Promise<Record<string, unknown>>;
   transactions(limit?: number): Promise<unknown>;
@@ -161,6 +162,8 @@ export interface LegendumTabOptions {
 export interface LegendumTab {
   readonly total: number;
   add(amount?: number): Promise<void>;
+  /** Flush remainder without closing; tab stays usable. */
+  flush(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -206,6 +209,20 @@ export interface MiddlewareOptions {
   ) => Promise<void>;
   /** When Legendum returns token_not_found on status/balance, clear stored token (optional). */
   clearToken?: (request: Request, ...extra: unknown[]) => Promise<void>;
+  /** After successful `POST …/confirm` + `setToken` (optional). */
+  onLink?: (
+    request: Request,
+    accountToken: string,
+    email: string | null,
+    ...extra: unknown[]
+  ) => Promise<void>;
+  /** After successful `POST …/link-key` / `linkAccount` (optional). Same `email` shape as `onLink`. */
+  onLinkKey?: (
+    request: Request,
+    accountToken: string,
+    email: string | null,
+    ...extra: unknown[]
+  ) => Promise<void>;
   client?: LegendumServiceClient;
 }
 

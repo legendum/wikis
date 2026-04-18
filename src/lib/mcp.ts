@@ -5,7 +5,8 @@
  * Mounted at /mcp as an HTTP transport endpoint.
  */
 import type { Database } from "bun:sqlite";
-import { search } from "./search";
+import { searchAllWikis } from "./search";
+import { wikiPageUrl } from "./public-wiki-urls";
 import { getFile, getPageUpdates, listFiles } from "./storage";
 
 export interface McpTool {
@@ -21,7 +22,7 @@ export interface McpToolResult {
 
 export const MCP_TOOLS: McpTool[] = [
   {
-    name: "list_wikis",
+    name: "list",
     description: "List all available wikis.",
     inputSchema: {
       type: "object",
@@ -29,17 +30,15 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: "search_wiki",
+    name: "search",
     description:
-      "Search wiki pages by keyword or semantic query. Returns matching chunks ranked by relevance.",
+      "Search all of the user's wikis (FTS + optional semantic re-ranking). Returns snippets with page links.",
     inputSchema: {
       type: "object",
       properties: {
-        wiki: { type: "string", description: "Wiki name (e.g. 'depends')" },
-        query: { type: "string", description: "Search query" },
-        limit: { type: "number", description: "Max results (default 10)" },
+        query: { type: "string", description: "Free-form search text" },
       },
-      required: ["wiki", "query"],
+      required: ["query"],
     },
   },
   {
@@ -90,7 +89,7 @@ export async function handleToolCall(
   args: Record<string, unknown>,
 ): Promise<McpToolResult> {
   switch (toolName) {
-    case "list_wikis": {
+    case "list": {
       const wikis = db
         .prepare("SELECT name, description FROM wikis ORDER BY name")
         .all() as { name: string; description: string }[];
@@ -103,21 +102,17 @@ export async function handleToolCall(
       return textResult(text);
     }
 
-    case "search_wiki": {
-      const wikiName = args.wiki as string;
+    case "search": {
       const query = args.query as string;
-      const limit = (args.limit as number) || 10;
 
-      const wiki = getWiki(db, wikiName);
-      if (!wiki) return errorResult(`Wiki "${wikiName}" not found.`);
-
-      const results = await search(db, wiki.id, query, { limit });
+      const results = await searchAllWikis(db, query, {});
       if (results.length === 0) return textResult("No results found.");
 
       const text = results
         .map((r, i) => {
           const page = r.path.replace(/\.md$/, "");
-          return `${i + 1}. **${page}** (score: ${r.score.toFixed(2)})\n   ${r.chunk.slice(0, 200)}`;
+          const url = wikiPageUrl(r.wiki, r.path);
+          return `${i + 1}. **${r.wiki} / ${page}** (score: ${r.score.toFixed(2)})\n   ${url}\n   ${r.chunk.slice(0, 200)}`;
         })
         .join("\n\n");
 

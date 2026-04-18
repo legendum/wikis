@@ -21,12 +21,10 @@ export default async function search(args: string[]) {
     process.exit(1);
   }
 
-  const config = parse(readFileSync(configPath, "utf8"));
-  const wikiName = config.name;
   const apiUrl = getApiUrl();
   const accountKey = getAccountKey();
 
-  const url = `${apiUrl}/api/search/${encodeURIComponent(wikiName)}?q=${encodeURIComponent(query)}`;
+  const url = `${apiUrl}/api/search?q=${encodeURIComponent(query)}`;
   const headers: Record<string, string> = { Accept: "application/json" };
   if (accountKey) headers.Authorization = `Bearer ${accountKey}`;
 
@@ -39,7 +37,15 @@ export default async function search(args: string[]) {
 
     const json = (await res.json()) as {
       ok: boolean;
-      data?: { results: { path: string; chunk: string; score: number }[] };
+      data?: {
+        results: {
+          wiki: string;
+          path: string;
+          chunk: string;
+          score: number;
+          url?: string;
+        }[];
+      };
     };
     const results = json.data?.results;
     if (!results?.length) {
@@ -50,7 +56,10 @@ export default async function search(args: string[]) {
     for (const r of results) {
       const title = r.path.replace(/\.md$/, "").replace(/-/g, " ");
       const snippet = r.chunk.slice(0, 120).replace(/\n/g, " ");
-      console.log(`  ${title} (${r.path})`);
+      const line = r.url
+        ? `${r.wiki} / ${title}\n    ${r.url}`
+        : `${r.wiki} / ${title} (${r.path})`;
+      console.log(`  ${line}`);
       console.log(`    ${snippet}…`);
       console.log();
     }

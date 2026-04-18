@@ -5,7 +5,11 @@
 
 import type { Database } from "bun:sqlite";
 import { type Context, Elysia } from "elysia";
-import { extractBearerToken, validateAccountKey } from "../lib/auth";
+import {
+  extractBearerToken,
+  validateAccountKey,
+  validateBearerToken,
+} from "../lib/auth";
 import {
   CONTENT_TYPE_MARKDOWN_UTF8,
   LEGENDUM_BASE_URL,
@@ -14,7 +18,7 @@ import { ensureLocalUser, getPublicDb, getUserDb } from "../lib/db";
 import { highlightCodeBlocks, PRISM_THEME_CSS } from "../lib/highlight";
 import { isSelfHosted, LOCAL_USER_ID } from "../lib/mode";
 import { escapeHtml, renderMarkdown } from "../lib/render";
-import { search } from "../lib/search";
+import { search, searchAllWikis } from "../lib/search";
 import { getFile, getPageUpdates, listFiles } from "../lib/storage";
 import { getSessionUser } from "./auth";
 
@@ -146,34 +150,21 @@ export const webRoutes = new Elysia()
 
     // Search user's wikis only (public wikis have per-wiki search)
     if (query.q && user) {
-      const allResults: {
-        wiki: string;
-        path: string;
-        slug: string;
-        title: string;
-        chunk: string;
-      }[] = [];
       const db = getUserDb(user.id);
-      for (const w of userWikis) {
-        const wikiRow = db
-          .prepare("SELECT id FROM wikis WHERE name = ?")
-          .get(w.name) as { id: number } | null;
-        if (!wikiRow) continue;
-        const results = await search(db, wikiRow.id, query.q, { limit: 10 });
-        for (const r of results) {
-          const slug = r.path.replace(/\.md$/, "");
-          const title = slug
-            .replace(/-/g, " ")
-            .replace(/\b\w/g, (c) => c.toUpperCase());
-          allResults.push({
-            wiki: w.name,
-            path: r.path,
-            slug,
-            title,
-            chunk: r.chunk,
-          });
-        }
-      }
+      const hits = await searchAllWikis(db, query.q, { limit: 10 });
+      const allResults = hits.map((r) => {
+        const slug = r.path.replace(/\.md$/, "");
+        const title = slug
+          .replace(/-/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+        return {
+          wiki: r.wiki,
+          path: r.path,
+          slug,
+          title,
+          chunk: r.chunk,
+        };
+      });
 
       const html = allResults
         .map(
@@ -430,7 +421,7 @@ function resolveUser(
   const cookie = headers.cookie;
   // Check API Bearer token first (CLI)
   const bearerToken = extractBearerToken(headers.authorization);
-  if (bearerToken) return validateAccountKey(bearerToken);
+  if (bearerToken) return validateBearerToken(bearerToken);
 
   if (!cookie) return null;
 

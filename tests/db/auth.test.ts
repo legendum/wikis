@@ -5,9 +5,9 @@ import { resolve } from "node:path";
 import { createTestDataDir } from "../helpers/db";
 
 /**
- * Tests for the auth helpers (validateAccountKey, extractBearerToken,
- * storeAccountKey). Logic is inlined to avoid pulling in db.ts (which
- * resolves DATA_DIR at import time).
+ * Tests for the auth helpers (validateAccountKey, validateBearerToken,
+ * extractBearerToken, storeAccountKey). Logic is inlined to avoid pulling in
+ * db.ts (which resolves DATA_DIR at import time).
  */
 
 const SCHEMA = `
@@ -59,6 +59,16 @@ function storeAccountKey(db: Database, userId: number, key: string): void {
   db.prepare(
     "INSERT INTO account_keys (user_id, key_hash, key_prefix, label) VALUES (?, ?, ?, 'default')",
   ).run(userId, hash, prefix);
+}
+
+function validateBearerToken(db: Database, token: string): AccountKeyUser | null {
+  const byKey = validateAccountKey(db, token);
+  if (byKey) return byKey;
+  return db
+    .prepare(
+      `SELECT u.id, u.email, u.legendum_token FROM users u WHERE u.legendum_token = ?`,
+    )
+    .get(token) as AccountKeyUser | null;
 }
 
 describe("extractBearerToken", () => {
@@ -137,5 +147,50 @@ describe("validateAccountKey", () => {
   it("rejects a tampered key with the same prefix", () => {
     storeAccountKey(db, userId, "lak_secret123");
     expect(validateAccountKey(db, "lak_secret124")).toBeNull();
+  });
+});
+
+describe("validateBearerToken", () => {
+  let tmp: { dir: string; cleanup: () => void };
+  let db: Database;
+  let userId: number;
+
+  beforeEach(() => {
+    tmp = createTestDataDir();
+    db = new Database(resolve(tmp.dir, "auth.db"), { create: true });
+    db.exec("PRAGMA foreign_keys = ON");
+    db.exec(SCHEMA);
+    userId = (
+      db
+        .prepare(
+          "INSERT INTO users (email, db_path) VALUES (?, ?) RETURNING id",
+        )
+        .get("alice@example.com", "data/user1.db") as { id: number }
+    ).id;
+  });
+
+  afterEach(() => {
+    db.close();
+    tmp.cleanup();
+  });
+
+  it("accepts a valid lak_ key like validateAccountKey", () => {
+    storeAccountKey(db, userId, "lak_secret123");
+    const user = validateBearerToken(db, "lak_secret123");
+    expect(user?.id).toBe(userId);
+  });
+
+  it("accepts users.legendum_token when no lak_ key matches", () => {
+    db.prepare("UPDATE users SET legendum_token = ? WHERE id = ?").run(
+      "opaque-account-token-xyz",
+      userId,
+    );
+    const user = validateBearerToken(db, "opaque-account-token-xyz");
+    expect(user?.id).toBe(userId);
+    expect(user?.email).toBe("alice@example.com");
+  });
+
+  it("returns null for unknown opaque tokens", () => {
+    expect(validateBearerToken(db, "not-in-db")).toBeNull();
   });
 });
