@@ -94,6 +94,8 @@ function formatSearchMarkdown(query: string, hits: SearchHit[]): string {
     lines.push(
       `${i + 1}. **[${label}](${url})** _(score ${r.score.toFixed(3)})_`,
     );
+    // Plain URL line so clients/models always see a copy-pasteable link (not only markdown).
+    lines.push(`   ${url}`);
     lines.push(`   ${snippet}${more}`, "");
   }
   return lines.join("\n");
