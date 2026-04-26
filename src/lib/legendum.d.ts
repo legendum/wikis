@@ -1,6 +1,7 @@
 /**
- * Type declarations for `legendum.js` (vendored Legendum SDK).
- * Keep in sync with `src/lib/legendum.js` — `module.exports` and behavior.
+ * Type declarations for `legendum.js` (Legendum JS SDK).
+ * Canonical copy: `legendum` repo `public/sdk/` — vendored into consuming apps as `src/lib/legendum.d.ts`.
+ * Keep in sync with `legendum.js` (`module.exports` and behavior).
  */
 
 /** Service client from `create()` / `service()`. */
@@ -39,6 +40,19 @@ export interface LegendumServiceClient {
   linkKey(
     accountKey: string,
   ): Promise<{ account_token: string; email: string }>;
+  /**
+   * Issue a Legendum Account Key for a user this service is already linked to.
+   * @throws err.code forbidden | unauthorized | rate_limited | bad_request (see SDK header)
+   */
+  issueKey(
+    accountToken: string,
+    opts?: { label?: string },
+  ): Promise<{
+    key: string;
+    key_prefix: string;
+    label: string;
+    id: number;
+  }>;
   /** Batched micro-charges; uses this client for `charge` (same as top-level `tab` with `{ client }`). */
   tab(
     accountToken: string,
@@ -141,6 +155,13 @@ export interface LegendumSafeClient {
       }
     | { ok: false; error: string; code?: string }
   >;
+  issueKey: (...args: Parameters<LegendumServiceClient["issueKey"]>) => Promise<
+    | {
+        ok: true;
+        data: Awaited<ReturnType<LegendumServiceClient["issueKey"]>>;
+      }
+    | { ok: false; error: string; code?: string }
+  >;
   /** Sync factory: returns `{ ok, data }` or `{ ok, error }` (same pattern as Ruby `SafeClient#tab`). */
   tab: (
     accountToken: string,
@@ -193,6 +214,17 @@ export interface LinkController {
   destroy: () => void;
 }
 
+/** Aliases for older imports (e.g. `LegendumLinkState` from `legendum.d.js`). Prefer `LinkController*`. */
+export type LegendumLinkState = LinkControllerState;
+export type LegendumLinkController = LinkController;
+export type LegendumLinkControllerOptions = LinkControllerOptions;
+export type LegendumLinkRequest = Awaited<
+  ReturnType<LegendumServiceClient["requestLink"]>
+>;
+export type LegendumAuthAndLinkUrlOptions = Parameters<
+  LegendumServiceClient["authAndLinkUrl"]
+>[0];
+
 /**
  * Passed to `middleware()`. Callbacks use `apply` with trailing args from the host
  * (see `legendum.js` — e.g. user id; may be more in other apps).
@@ -221,13 +253,29 @@ export interface MiddlewareOptions {
     email: string | null,
     ...extra: unknown[]
   ) => Promise<void>;
+  /**
+   * After successful `POST …/issue-key` (optional). Raw key once — encrypt and store.
+   * Errors swallowed (best-effort).
+   */
+  onIssueKey?: (
+    request: Request,
+    key: string,
+    keyPrefix: string,
+    ...extra: unknown[]
+  ) => Promise<void>;
   client?: LegendumServiceClient;
 }
+
+/** @deprecated Prefer `MiddlewareOptions` — kept for older codebases */
+export type LegendumMiddlewareOptions = MiddlewareOptions;
 
 export type LegendumMiddlewareHandler = (
   request: Request,
   ...extra: unknown[]
 ) => Promise<Response | null | undefined>;
+
+/** @deprecated Prefer `LegendumMiddlewareHandler` */
+export type LegendumMiddleware = LegendumMiddlewareHandler;
 
 export interface ButtonOptions {
   url?: string;
@@ -255,6 +303,7 @@ export interface LegendumMockHandlers {
   authAndLinkUrl?: LegendumServiceClient["authAndLinkUrl"];
   exchangeCode?: LegendumServiceClient["exchangeCode"];
   linkKey?: LegendumServiceClient["linkKey"];
+  issueKey?: LegendumServiceClient["issueKey"];
   tab?: LegendumServiceClient["tab"];
 }
 
@@ -313,6 +362,10 @@ declare const legendum: {
     redirectUri: string,
   ) => ReturnType<LegendumServiceClient["exchangeCode"]>;
   linkKey: (accountKey: string) => ReturnType<LegendumServiceClient["linkKey"]>;
+  issueKey: (
+    accountToken: string,
+    opts?: { label?: string },
+  ) => ReturnType<LegendumServiceClient["issueKey"]>;
 
   button: (opts?: ButtonOptions) => string;
   linkWidget: (opts: LinkWidgetOptions) => string;

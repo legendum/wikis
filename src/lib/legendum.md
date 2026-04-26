@@ -35,6 +35,7 @@ Three jobs you'll do:
 ```
 src/lib/legendum.js   ← copy from legendum repo public/sdk/ (canonical; keep in sync)
 src/lib/legendum.md   ← same source — integration guide, ships next to the SDK
+src/lib/legendum.d.ts ← same public/sdk/ — TypeScript declarations for the SDK
 .env:
   LEGENDUM_API_KEY=lpk_...
   LEGENDUM_SECRET=lsk_...
@@ -47,7 +48,7 @@ if (!legendum.isConfigured()) console.warn("Legendum disabled");
 ```
 
 - The top-level `legendum.charge(...)` etc. lazily build a default client from env. Use that. Only call `legendum.create({ apiKey, secret })` for non-default clients (multi-tenant, tests).
-- **TypeScript:** ship a hand-written `legendum.d.ts` next to the file. The shape is stable.
+- **TypeScript:** copy `legendum.d.ts` from `public/sdk/` next to `legendum.js` (canonical; keep in sync with the JS file).
 - **Tests:** `legendum.mock({ charge: () => ({...}) })` at start, `legendum.unmock()` in teardown. `isConfigured()` returns true while mocked.
 - **Local dev:** point `LEGENDUM_BASE_URL` at a local instance. All primitives + middleware respect it.
 
@@ -248,6 +249,8 @@ For UI display, low-balance warnings, status routes. **Do not** poll in a hot pa
 
 Every async method throws. `err.code`, `err.message`, `err.status`.
 
+**Wire format.** Legendum JSON errors look like `{ "ok": false, "error": "insufficient_funds", "message": "Account balance is …" }`: **`message`** is human-readable, **`error`** is the machine code. The SDKs map those onto thrown errors (`message` → `err.message`, `error` → `err.code`). If a response omits `error`, `err.code` may be missing — use `err.status` and `err.message` as fallbacks. The **`middleware`** routes under `{prefix}/…` return the same shape on failure (both fields when a code is known).
+
 | Code | Meaning | Action |
 |---|---|---|
 | `insufficient_funds` (402) | Balance too low | Stop work, show "top up" link (`legendum.button({ url })` or `https://legendum.co.uk/account`) |
@@ -260,13 +263,13 @@ Every async method throws. `err.code`, `err.message`, `err.status`.
 
 **Patterns:**
 - **Degrade gracefully.** Wrap charge/reserve so a Legendum 5xx doesn't take down your service. Per use-case decide: fail open (let the work run, log) or fail closed (refuse, return 503). Cheap reads → fail open. Expensive LLM turns → fail closed.
-- **Non-throwing wrapper.** `legendum.client(c)` wraps any client so methods return `{ ok, data?, error?, code? }` instead of throwing. Cleaner than try/catch in route handlers.
+- **Non-throwing wrapper.** `legendum.client(c)` wraps any client so methods return `{ ok, data?, error?, code? }` instead of throwing. On failure, **`error`** is the human-readable string (same text as a thrown `err.message`); **`code`** is the machine code when present (same as `err.code`). That naming differs from raw HTTP JSON, which uses **`message`** for humans — only the safe client uses the key `error` for that string.
 
 ---
 
 ## 6. Recipe: integrating into a new service in 8 steps
 
-1. **Copy** `legendum.js` and `legendum.md` from `public/sdk/` → e.g. `src/lib/`. Add `legendum.d.ts` if TypeScript.
+1. **Copy** `legendum.js`, `legendum.md`, and (for TypeScript) `legendum.d.ts` from `public/sdk/` → e.g. `src/lib/`.
 2. **Register** the service with Legendum: get `lpk_…`/`lsk_…`, register `redirectUri` if using OAuth.
 3. **Add env vars** + an `isConfigured()` check at startup. Gate billing on it so dev environments work without credentials.
 4. **Pick a linking flow** (§3). Persist the token on the user row. Implement `clearToken`.
