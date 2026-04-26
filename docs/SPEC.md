@@ -284,7 +284,7 @@ wikis login                       # opens browser for Legendum OAuth
 wikis login --key lak_...         # direct account key (for agents/CI)
 ```
 
-The account key is stored in `~/.config/wikis/config.yml`. The CLI uses it as a bearer token for all API calls. The server calls `POST /api/agent/link-service` on Legendum to establish the service link and get a charging token (same pattern as depends.cc).
+The account key is stored in `~/.config/wikis/config.yml`. The CLI uses it as a bearer token for all API calls. The server calls `POST /api/agent/link-key` on Legendum to establish the service link and get a charging token (same pattern as depends.cc).
 
 ## CLI
 

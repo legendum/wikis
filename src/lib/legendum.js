@@ -99,7 +99,8 @@ var ASYNC_METHODS = [
   "pollLink",
   "waitForLink",
   "exchangeCode",
-  "linkAccount",
+  "linkKey",
+  "issueKey",
 ];
 var SYNC_METHODS = ["authUrl", "authAndLinkUrl"];
 
@@ -307,14 +308,32 @@ function create(config) {
     },
 
     /**
-     * Link a Legendum account to this service.
-     * The user provides their account key (lak_...), and this creates
-     * the account-service link, returning a token for charging.
+     * Link this service to a Legendum account using the user's account key (lak_…).
+     * Creates the account-service link and returns the per-service `account_token`
+     * you'll persist on the user row and pass to `charge` / `balance` / `reserve` / `tab`.
      * @param {string} accountKey - The account key (lak_...)
      * @returns {Promise<{ account_token: string, email: string }>}
      */
-    async linkAccount(accountKey) {
-      return request("POST", "/api/agent/link-service", { api_key: apiKey, secret: secret, account_key: accountKey });
+    async linkKey(accountKey) {
+      return request("POST", "/api/agent/link-key", { api_key: apiKey, secret: secret, account_key: accountKey });
+    },
+
+    /**
+     * Issue a Legendum Account Key for a user this service is already linked to.
+     * Requires the calling service to have `can_issue_keys: true` in
+     * services.yml. The returned `key` is shown once — store it (encrypted) and
+     * pass it as `lak_…` to downstream services.
+     * @param {string} accountToken - The caller's existing account_token for this user
+     * @param {object} [opts] - { label }
+     * @returns {Promise<{ key: string, key_prefix: string, label: string, id: number }>}
+     * @throws err.code === "forbidden" (403) — service lacks `can_issue_keys` flag
+     * @throws err.code === "unauthorized" (401) — bad service creds, or accountToken unknown / inactive / belongs to another service
+     * @throws err.code === "rate_limited" (429) — too many issues for this (service, account) — currently 10/hour
+     */
+    async issueKey(accountToken, opts) {
+      var body = { api_key: apiKey, secret: secret, account_token: accountToken };
+      if (opts?.label) body.label = opts.label;
+      return request("POST", "/api/agent/keys", body);
     },
 
     /**
@@ -706,6 +725,7 @@ function linkController(opts) {
  * @param {function} [opts.clearToken] - async (request, ...extra) => void — optional; called when balance() returns token_not_found (e.g. clear stored token). Same extra args as getToken/setToken.
  * @param {function} [opts.onLink] - async (request, accountToken, email, ...extra) => void — optional; called right after setToken succeeds in /confirm. Use for "user just linked" side effects like sending a welcome email or refreshing a session. `email` is the verified Legendum account email (string, may be null in edge cases). Errors thrown here are swallowed (best-effort) so a failing side effect can't break the link flow.
  * @param {function} [opts.onLinkKey] - async (request, accountToken, email, ...extra) => void — optional; after successful /link-key (same contract as onLink; errors swallowed).
+ * @param {function} [opts.onIssueKey] - async (request, key, keyPrefix, ...extra) => void — optional; called right after /issue-key issues a fresh `lak_…` for the current user. Use to encrypt-and-store the key. The raw key is passed once. Errors are swallowed (best-effort).
  * @param {object} [opts.client]       - SDK client from create(). If omitted, uses default (env vars)
  * @returns {function} async (request, ...extra) => Response|null — returns Response if handled, null if not a Legendum route. Extra args are passed through to callbacks.
  *
@@ -713,6 +733,7 @@ function linkController(opts) {
  *   POST {prefix}/link       — request a pairing code
  *   POST {prefix}/auth-link  — request pairing code + build login-and-link authorize URL (body: { redirect_uri, state })
  *   POST {prefix}/link-key   — Bearer lak_ → { account_token, email }
+ *   POST {prefix}/issue-key  — issue a fresh lak_ for the current user (requires getToken)
  *   POST {prefix}/confirm    — poll for link confirmation
  *   GET  {prefix}/status     — check linked state and balance
  *
@@ -727,6 +748,7 @@ function middleware(opts) {
   var clearToken = opts.clearToken || (async () => {});
   var onLink = opts.onLink || null;
   var onLinkKey = opts.onLinkKey || null;
+  var onIssueKey = opts.onIssueKey || null;
   var client = opts.client || null;
 
   function getClient() {
@@ -788,10 +810,10 @@ function middleware(opts) {
         var authHeader = request.headers.get("Authorization") || "";
         var bearer = /^Bearer\s+(\S+)/i.exec(authHeader);
         if (!bearer || !bearer[1]) {
-          return jsonResponse({ error: "Authorization: Bearer <account_key> required" }, 401);
+          return jsonResponse({ ok: false, message: "Authorization: Bearer <account_key> required" }, 401);
         }
         c = getClient();
-        data = await c.linkAccount(bearer[1]);
+        data = await c.linkKey(bearer[1]);
         if (onLinkKey) {
           try {
             await onLinkKey.apply(null, [request, data.account_token, data.email || null].concat(extra));
@@ -806,12 +828,40 @@ function middleware(opts) {
       } catch (err) {
         var httpStatus = err.status;
         if (httpStatus === 401 || err.code === "unauthorized") {
-          return jsonResponse({ error: err.message || "Unauthorized" }, 401);
+          return jsonResponse({ ok: false, message: err.message || "Unauthorized" }, 401);
         }
         if (httpStatus >= 400 && httpStatus < 500) {
-          return jsonResponse({ error: err.message || "Bad request" }, httpStatus);
+          return jsonResponse({ ok: false, message: err.message || "Bad request" }, httpStatus);
         }
-        return jsonResponse({ error: err.message || "Link failed" }, 500);
+        return jsonResponse({ ok: false, message: err.message || "Link failed" }, 500);
+      }
+    }
+
+    // POST /issue-key
+    if (route === "/issue-key" && request.method === "POST") {
+      try {
+        body = await request.json().catch(() => ({}));
+        token = await getToken.apply(null, [request].concat(extra));
+        if (!token) return jsonResponse({ ok: false, message: "no_link" }, 409);
+        c = getClient();
+        data = await c.issueKey(token, { label: body.label });
+        if (onIssueKey) {
+          try {
+            await onIssueKey.apply(null, [request, data.key, data.key_prefix].concat(extra));
+          } catch (_e) {
+            /* best-effort: a failing onIssueKey side effect must not break the response */
+          }
+        }
+        return jsonResponse({
+          key: data.key,
+          key_prefix: data.key_prefix,
+          label: data.label,
+          id: data.id,
+        });
+      } catch (err) {
+        var s = err.status;
+        if (s < 400 || s >= 600 || typeof s !== "number") s = 500;
+        return jsonResponse({ ok: false, message: err.message || "Issue failed" }, s);
       }
     }
 
@@ -1030,9 +1080,15 @@ function mockSdk(handlers) {
     authAndLinkUrl: h.authAndLinkUrl || ((opts) => "http://mock.legendum.test/auth/authorize?state=" + (opts?.state || "")
         + "&intent=login_link&link_code=" + encodeURIComponent((opts?.linkCode) || "")),
     exchangeCode: h.exchangeCode || (async () => ({ email: "mock@test.com", linked: false })),
-    linkAccount: h.linkAccount || (async () => ({
+    linkKey: h.linkKey || (async () => ({
       account_token: "mock_account_token",
       email: "mock@test.com",
+    })),
+    issueKey: h.issueKey || (async (_t, opts) => ({
+      key: "lak_mock0000000000000000000000000000",
+      key_prefix: "lak_mock0000",
+      label: opts?.label || "mock",
+      id: 1,
     })),
   };
   m.tab = h.tab || ((accountToken, description, opts) => tab(accountToken, description, Object.assign({}, opts || {}, { client: m })));

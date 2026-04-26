@@ -17,7 +17,7 @@ describe("legendum.middleware POST /link-key", () => {
       getToken: async () => null,
       setToken: async () => {},
       client: {
-        linkAccount: async () => ({
+        linkKey: async () => ({
           account_token: "should-not-run",
           email: "x@y.com",
         }),
@@ -30,13 +30,13 @@ describe("legendum.middleware POST /link-key", () => {
     expect(res!.status).toBe(401);
   });
 
-  it("returns account_token and email from linkAccount", async () => {
+  it("returns account_token and email from linkKey", async () => {
     const mw = legendum.middleware({
       prefix: "/legendum",
       getToken: async () => null,
       setToken: async () => {},
       client: {
-        linkAccount: async (key: string) => {
+        linkKey: async (key: string) => {
           expect(key).toBe("lak_foo");
           return { account_token: "acct_1", email: "u@test.com" };
         },
@@ -64,7 +64,7 @@ describe("legendum.middleware POST /link-key", () => {
       getToken: async () => null,
       setToken: async () => {},
       client: {
-        linkAccount: async () => ({
+        linkKey: async () => ({
           account_token: "t",
           email: "on@test.com",
         }),

@@ -36,7 +36,7 @@ export interface LegendumServiceClient {
     linked: boolean;
     account_token?: string;
   }>;
-  linkAccount(
+  linkKey(
     accountKey: string,
   ): Promise<{ account_token: string; email: string }>;
   /** Batched micro-charges; uses this client for `charge` (same as top-level `tab` with `{ client }`). */
@@ -134,12 +134,12 @@ export interface LegendumSafeClient {
       }
     | { ok: false; error: string; code?: string }
   >;
-  linkAccount: (
-    ...args: Parameters<LegendumServiceClient["linkAccount"]>
+  linkKey: (
+    ...args: Parameters<LegendumServiceClient["linkKey"]>
   ) => Promise<
     | {
         ok: true;
-        data: Awaited<ReturnType<LegendumServiceClient["linkAccount"]>>;
+        data: Awaited<ReturnType<LegendumServiceClient["linkKey"]>>;
       }
     | { ok: false; error: string; code?: string }
   >;
@@ -216,7 +216,7 @@ export interface MiddlewareOptions {
     email: string | null,
     ...extra: unknown[]
   ) => Promise<void>;
-  /** After successful `POST …/link-key` / `linkAccount` (optional). Same `email` shape as `onLink`. */
+  /** After successful `POST …/link-key` / `linkKey` (optional). Same `email` shape as `onLink`. */
   onLinkKey?: (
     request: Request,
     accountToken: string,
@@ -256,7 +256,7 @@ export interface LegendumMockHandlers {
   authUrl?: LegendumServiceClient["authUrl"];
   authAndLinkUrl?: LegendumServiceClient["authAndLinkUrl"];
   exchangeCode?: LegendumServiceClient["exchangeCode"];
-  linkAccount?: LegendumServiceClient["linkAccount"];
+  linkKey?: LegendumServiceClient["linkKey"];
   tab?: LegendumServiceClient["tab"];
 }
 
@@ -314,9 +314,9 @@ declare const legendum: {
     code: string,
     redirectUri: string,
   ) => ReturnType<LegendumServiceClient["exchangeCode"]>;
-  linkAccount: (
+  linkKey: (
     accountKey: string,
-  ) => ReturnType<LegendumServiceClient["linkAccount"]>;
+  ) => ReturnType<LegendumServiceClient["linkKey"]>;
 
   button: (opts?: ButtonOptions) => string;
   linkWidget: (opts: LinkWidgetOptions) => string;

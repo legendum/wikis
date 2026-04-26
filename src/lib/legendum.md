@@ -19,7 +19,7 @@ Legendum is a credit-based billing service. Users top up a balance of **credits*
 Legendum gives your service three things:
 
 - **Service credentials** — `LEGENDUM_API_KEY` (`lpk_…`) and `LEGENDUM_SECRET` (`lsk_…`). Server-only. Never expose to the browser.
-- **A per-user account token** — opaque string returned when a user links their Legendum account to your service. Persist it on the user row. This is what you pass to `charge` / `balance` / `reserve` / `tab`. **Important:** this token changes on every re-link (e.g. logging in from a new device triggers a new link flow, which generates a fresh token). Do **not** use it as a user identity key — use the `email` returned by `exchangeCode` / `linkAccount` instead. Update the stored token on every login so billing calls use the current one.
+- **A per-user account token** — opaque string returned when a user links their Legendum account to your service. Persist it on the user row. This is what you pass to `charge` / `balance` / `reserve` / `tab`. **Important:** this token changes on every re-link (e.g. logging in from a new device triggers a new link flow, which generates a fresh token). Do **not** use it as a user identity key — use the `email` returned by `exchangeCode` / `linkKey` instead. Update the stored token on every login so billing calls use the current one.
 - **A user-held account key** (`lak_…`) — held by the *user*, not your service. Used by paste-a-key flows (CLIs, agents) and by `account()` clients that act on behalf of one human.
 
 Three jobs you'll do:
@@ -59,10 +59,11 @@ if (!legendum.isConfigured()) console.warn("Legendum disabled");
 |---|---|---|
 | Web app, you want Legendum to be the identity provider | **Login with Legendum** (OAuth) | 3.1 |
 | Web app with existing accounts, adding billing | **linkController + middleware** (popup) | 3.2 |
-| CLI / agent / headless tool | **`linkAccount(accountKey)`** | 3.3 |
+| CLI / agent / headless tool | **`linkKey(accountKey)`** | 3.3 |
 | Tooling that acts *as* a user | **`account(lak_…)`** | 3.4 |
+| Trusted service auto-issuing keys for downstream services | **`issueKey(accountToken)`** | 3.5 |
 
-You can mix flows in one service (e.g. OAuth for the web app, `linkAccount` for the CLI).
+You can mix flows in one service (e.g. OAuth for the web app, `linkKey` for the CLI).
 
 ### 3.1 Login with Legendum (OAuth) — recommended for new web apps
 
@@ -117,7 +118,7 @@ const res = await handler(request, currentUser);
 if (res) return res;
 ```
 
-This exposes `POST {prefix}/link`, `POST {prefix}/auth-link`, `POST {prefix}/link-key`, `POST {prefix}/confirm`, `GET {prefix}/status`.
+This exposes `POST {prefix}/link`, `POST {prefix}/auth-link`, `POST {prefix}/link-key`, `POST {prefix}/issue-key`, `POST {prefix}/confirm`, `GET {prefix}/status`.
 
 **Browser:**
 ```js
@@ -140,12 +141,12 @@ Notes:
 - `startLink` must be called from a real user gesture or popup blockers eat it.
 - Polling stops after 10 minutes; user can retry.
 
-### 3.3 `linkAccount(accountKey)` — agents, CLIs, scripts
+### 3.3 `linkKey(accountKey)` — agents, CLIs, scripts
 
 User generates a `lak_…` on legendum.co.uk and pastes it once.
 
 ```ts
-const { account_token, email } = await legendum.linkAccount(accountKey);
+const { account_token, email } = await legendum.linkKey(accountKey);
 // Persist `account_token` against the user/agent (your DB column may use another name). Discard the lak_.
 ```
 
@@ -165,6 +166,28 @@ await acct.link(pairingCode);
 ```
 
 Use this for CLIs/scripts that manage one human's account. **Not** for billing your own service.
+
+### 3.5 `issueKey(accountToken, { label? })` — auto-issue a `lak_…` for a linked user
+
+Use when **your** service is already linked to a user (you have an `accountToken` from §3.1–§3.3) and you want to act *as* that user against **another** Legendum-powered service — without asking the user to paste a `lak_…` into your settings page.
+
+```ts
+const { key, key_prefix, id } = await legendum.issueKey(accountToken, {
+  label: "MyApp — linked services",
+});
+// `key` is shown ONCE. Store encrypted, then pass it as Bearer to downstream services
+// or feed it into their `linkKey(key)` flow (§3.3).
+```
+
+Returns: `{ key, key_prefix, label, id }`. The auto-issued key shows up on the user's `/account` page with the label you provided (default = your service domain), and the user can revoke it like any human-issued key.
+
+Requires `can_issue_keys: true` for your service in Legendum's `config/services.yml` — Legendum operators flip this on per service. Without it, the call returns `forbidden` (403). Per `(service, account)` cap of ~10 keys/hour to catch re-issue loops.
+
+**Browser-side:** the middleware (§3.2) exposes `POST {prefix}/issue-key` so your front-end can ask for a fresh key without ever seeing your service secret. Pair it with `onIssueKey: (req, key, keyPrefix, ...extra) => …` on the middleware to encrypt-and-store the raw key the moment it's issued (errors swallowed, best-effort — same contract as `onLink`/`onLinkKey`).
+
+Errors: `forbidden` (flag off), `unauthorized` (bad creds, or the `accountToken` is unknown / inactive / belongs to a different service), `rate_limited`, `bad_request`.
+
+The Ruby SDK mirrors this as `Client#issue_key(account_token, label:)` and `Middleware`'s `POST {prefix}/issue-key` route + `on_issue_key:` callback.
 
 ---
 
@@ -257,7 +280,7 @@ Every async method throws. `err.code`, `err.message`, `err.status`.
 ## 7. Edge cases & gotchas
 
 - **Browser security:** never put `LEGENDUM_SECRET` in the page. If `linkController` is configured with `opts.client`, that client must run server-side. Prefer `mountAt` + middleware so the secret stays on the server.
-- **Tokens can be revoked remotely.** A user revoking their Legendum account key (`lak_…`) on legendum.co.uk deactivates *every* service link that was created via that key (i.e. via `linkAccount` — §3.3). OAuth and popup-pairing links survive. The symptom is a previously-working `account_token` suddenly returning `token_not_found` (404) on `charge`/`balance`. This is **not** a bug — it's the user severing the credential. Recovery is automatic if you've implemented `clearToken` (§3.2/§5): the middleware `/status` route catches the 404, fires `clearToken`, and your UI prompts the user to re-link. If you're not using middleware, handle `token_not_found` yourself wherever you call `charge`/`balance`.
+- **Tokens can be revoked remotely.** A user revoking their Legendum account key (`lak_…`) on legendum.co.uk deactivates *every* service link that was created via that key (i.e. via `linkKey` — §3.3). OAuth and popup-pairing links survive. The symptom is a previously-working `account_token` suddenly returning `token_not_found` (404) on `charge`/`balance`. This is **not** a bug — it's the user severing the credential. Recovery is automatic if you've implemented `clearToken` (§3.2/§5): the middleware `/status` route catches the 404, fires `clearToken`, and your UI prompts the user to re-link. If you're not using middleware, handle `token_not_found` yourself wherever you call `charge`/`balance`.
 - **Tokens change on re-link.** Each link flow (OAuth, popup, paste-a-key) generates a fresh `account_token`, overwriting the previous one in Legendum's `account_services` table. The old token is dead — billing calls with it will fail. Always update your stored token on login/re-link. Never use the token as a user identity key; use `email` instead.
 - **Email changes at Legendum.** Changing verified email on legendum.co.uk does **not** invalidate an existing service link or `account_token`. It *can* leave your database out of date if you keyed display or support on an email captured once at signup. Successful **`charge`** and **`settle`** payloads include **`email`** — the verified address Legendum used for that debit. Services that care about an up-to-date identity should treat that field as authoritative when present (e.g. update the user row when it differs). The next **`exchangeCode`** after login also returns the current email; billing responses help you stay in sync between logins.
 - **Token race:** two concurrent links for the same user produce two tokens; second `setToken` wins. Either lock per-user or accept the orphan (it still works).
@@ -298,13 +321,16 @@ Linking — pairing-code
   legendum.waitForLink(request_id, { interval, timeout }?)
 
 Linking — paste-a-key
-  legendum.linkAccount(lak_)                          → { account_token, email }
+  legendum.linkKey(lak_)                          → { account_token, email }
+
+Linking — auto-issue (trusted service, §3.5)
+  legendum.issueKey(accountToken, { label? })         → { key, key_prefix, label, id }
 
 UI helpers
   legendum.button({ url, label, target })             → HTML
   legendum.linkWidget({ mountAt | linkUrl/confirmUrl/statusUrl })  → HTML+JS
   legendum.linkController({ mountAt, onChange, ... }) → { startLink, startAuthAndLink, checkStatus, destroy }
-  legendum.middleware({ prefix, getToken, setToken, clearToken, onLink? })  → handler(req, ...extra)
+  legendum.middleware({ prefix, getToken, setToken, clearToken, onLink?, onLinkKey?, onIssueKey? })  → handler(req, ...extra)
 ```
 
 The Ruby SDK (`legendum.rb`) mirrors the same API. Method names match where idiomatic.
@@ -313,7 +339,7 @@ The Ruby SDK (`legendum.rb`) mirrors the same API. Method names match where idio
 
 ## 9. Where does the account token come from?
 
-The **account token** (the opaque string you pass to `charge`, `balance`, `reserve`, and `tab`) is **created when your service is linked** to the user’s Legendum account. It is **not** the user’s account key (`lak_…`). On the wire, Legendum always names this value **`account_token`** in JSON (OAuth, pairing, and `linkAccount` responses). Your database column can use a different name (e.g. `legendum_token`) if you prefer — map at the boundary when you persist.
+The **account token** (the opaque string you pass to `charge`, `balance`, `reserve`, and `tab`) is **created when your service is linked** to the user’s Legendum account. It is **not** the user’s account key (`lak_…`). On the wire, Legendum always names this value **`account_token`** in JSON (OAuth, pairing, and `linkKey` responses). Your database column can use a different name (e.g. `legendum_token`) if you prefer — map at the boundary when you persist.
 
 ### HTTP / JSON (`account_token` on the wire)
 
@@ -322,7 +348,7 @@ If you call Legendum’s **REST API** directly (or read raw requests/responses),
 | Surface | Name |
 |---------|------|
 | OAuth exchange JSON (`POST /api/auth/token`) | **`account_token`** |
-| Agent link-service JSON (`POST /api/agent/link-service`) | **`account_token`** |
+| Agent link-key JSON (`POST /api/agent/link-key`) | **`account_token`** |
 | Pairing poll (`GET /api/link/:requestId`) | **`account_token`** |
 | Balance query (`GET /api/balance`) | **`account_token`** (query parameter) |
 | Charge / reserve / settle / release request bodies | **`account_token`** |
@@ -333,7 +359,7 @@ If you call Legendum’s **REST API** directly (or read raw requests/responses),
 |------|--------|----------------------|
 | **OAuth** (Login with Legendum or login-and-link) | `exchangeCode(code, redirectUri)` | When `linked` is true — field is **`account_token`**. |
 | **Pairing** (popup / `linkController` + middleware) | `pollLink(requestId)` or `waitForLink(requestId)` | When `status === "confirmed"` — field is **`account_token`**. Middleware `POST …/confirm` surfaces the same. |
-| **Paste-a-key** (CLI, agents) | `linkAccount(accountKey)` | Always on success — field is **`account_token`** (plus `email`). |
+| **Paste-a-key** (CLI, agents) | `linkKey(accountKey)` | Always on success — field is **`account_token`** (plus `email`). |
 
 ### Methods that **do not** return an account token
 
@@ -344,6 +370,6 @@ If you call Legendum’s **REST API** directly (or read raw requests/responses),
 ### `account(lak_…)` vs the account token
 
 - **`account(accountKey)`** builds a client that uses the user’s **Legendum account key** (`lak_…`) for **agent** endpoints (`whoami`, agent `balance`, `link`, etc.) — see §3.4.
-- That **`lak_…` is not** the per-service **`account_token`** stored for **your** service’s billing. For billing your product, use the token from **`exchangeCode`**, **`linkAccount`**, or confirmed **`pollLink`**.
+- That **`lak_…` is not** the per-service **`account_token`** stored for **your** service’s billing. For billing your product, use the token from **`exchangeCode`**, **`linkKey`**, or confirmed **`pollLink`**.
 
 For architectural choices (OAuth vs pairing vs paste-a-key), see [patterns.md](patterns.md).
