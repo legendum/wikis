@@ -27,7 +27,7 @@ describe("legendum.middleware POST /link-key", () => {
       new Request("https://example.com/legendum/link-key", { method: "POST" }),
     );
     expect(res).not.toBeNull();
-    expect(res!.status).toBe(401);
+    expect(res?.status).toBe(401);
   });
 
   it("returns account_token and email from linkKey", async () => {
@@ -48,8 +48,8 @@ describe("legendum.middleware POST /link-key", () => {
         headers: { Authorization: "Bearer lak_foo" },
       }),
     );
-    expect(res!.status).toBe(200);
-    const body = (await res!.json()) as {
+    expect(res?.status).toBe(200);
+    const body = (await res?.json()) as {
       account_token: string;
       email: string;
     };
@@ -79,7 +79,7 @@ describe("legendum.middleware POST /link-key", () => {
         headers: { Authorization: "Bearer lak_x" },
       }),
     );
-    expect(res!.status).toBe(200);
+    expect(res?.status).toBe(200);
     expect(seen).toEqual(["t", "on@test.com"]);
   });
 });

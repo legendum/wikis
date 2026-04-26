@@ -134,9 +134,7 @@ export interface LegendumSafeClient {
       }
     | { ok: false; error: string; code?: string }
   >;
-  linkKey: (
-    ...args: Parameters<LegendumServiceClient["linkKey"]>
-  ) => Promise<
+  linkKey: (...args: Parameters<LegendumServiceClient["linkKey"]>) => Promise<
     | {
         ok: true;
         data: Awaited<ReturnType<LegendumServiceClient["linkKey"]>>;
@@ -314,9 +312,7 @@ declare const legendum: {
     code: string,
     redirectUri: string,
   ) => ReturnType<LegendumServiceClient["exchangeCode"]>;
-  linkKey: (
-    accountKey: string,
-  ) => ReturnType<LegendumServiceClient["linkKey"]>;
+  linkKey: (accountKey: string) => ReturnType<LegendumServiceClient["linkKey"]>;
 
   button: (opts?: ButtonOptions) => string;
   linkWidget: (opts: LinkWidgetOptions) => string;

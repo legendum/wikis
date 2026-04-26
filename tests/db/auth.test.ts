@@ -61,7 +61,10 @@ function storeAccountKey(db: Database, userId: number, key: string): void {
   ).run(userId, hash, prefix);
 }
 
-function validateBearerToken(db: Database, token: string): AccountKeyUser | null {
+function validateBearerToken(
+  db: Database,
+  token: string,
+): AccountKeyUser | null {
   const byKey = validateAccountKey(db, token);
   if (byKey) return byKey;
   return db

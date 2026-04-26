@@ -78,11 +78,7 @@ function ftsSearch(
   }
 }
 
-function ftsSearchAll(
-  db: Database,
-  query: string,
-  limit: number,
-): FtsRowAll[] {
+function ftsSearchAll(db: Database, query: string, limit: number): FtsRowAll[] {
   const escaped = escapeFtsQuery(query);
   if (!escaped) return [];
 
@@ -99,7 +95,10 @@ function ftsSearchAll(
       )
       .all(escaped, limit) as FtsRowAll[];
   } catch (e) {
-    log.warn("FTS query failed (all wikis)", { error: (e as Error).message, query });
+    log.warn("FTS query failed (all wikis)", {
+      error: (e as Error).message,
+      query,
+    });
     return [];
   }
 }

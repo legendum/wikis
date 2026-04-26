@@ -1,10 +1,8 @@
 /**
  * wikis search <query> — search wiki pages via the API.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-
-const { parse } = Bun.YAML;
 
 import { getAccountKey, getApiUrl } from "../lib/config";
 

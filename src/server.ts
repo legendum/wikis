@@ -79,7 +79,8 @@ const app = new Elysia()
     if (!legendumMiddleware) {
       set.status = 503;
       return Response.json({
-        error: "Legendum service credentials are not configured on this server.",
+        error:
+          "Legendum service credentials are not configured on this server.",
       });
     }
     const res = await legendumMiddleware(request);

@@ -5,8 +5,8 @@
  * Mounted at /mcp as an HTTP transport endpoint.
  */
 import type { Database } from "bun:sqlite";
-import { searchAllWikis } from "./search";
 import { wikiPageUrl } from "./public-wiki-urls";
+import { searchAllWikis } from "./search";
 import { getFile, getPageUpdates, listFiles } from "./storage";
 
 export interface McpTool {

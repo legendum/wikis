@@ -6,6 +6,7 @@ import {
   validateAccountKey,
   validateBearerToken,
 } from "../lib/auth";
+import { CONTENT_TYPE_MARKDOWN_UTF8 } from "../lib/constants";
 import {
   createUser,
   ensureLocalUser,
@@ -17,9 +18,8 @@ import { indexFile } from "../lib/indexer";
 import { log } from "../lib/log";
 import { handleMcpRequest } from "../lib/mcp";
 import { isSelfHosted, LOCAL_USER_EMAIL, LOCAL_USER_ID } from "../lib/mode";
-import { CONTENT_TYPE_MARKDOWN_UTF8 } from "../lib/constants";
 import { wikiPageUrl, wikiRootUrl } from "../lib/public-wiki-urls";
-import { search, searchAllWikis, type SearchHit } from "../lib/search";
+import { type SearchHit, searchAllWikis } from "../lib/search";
 import { getFile, getManifest, hashContent, upsertFile } from "../lib/storage";
 import { diffManifests, type Manifest } from "../lib/sync";
 
@@ -293,13 +293,10 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     const { db } = authGuard(headers);
     const q = query.q as string;
     if (!q) {
-      return new Response(
-        "# Error\n\n`?q=` query parameter is required.\n",
-        {
-          status: 400,
-          headers: { "Content-Type": CONTENT_TYPE_MARKDOWN_UTF8 },
-        },
-      );
+      return new Response("# Error\n\n`?q=` query parameter is required.\n", {
+        status: 400,
+        headers: { "Content-Type": CONTENT_TYPE_MARKDOWN_UTF8 },
+      });
     }
 
     const limit = Number(query.limit) || undefined;
