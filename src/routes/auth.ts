@@ -2,6 +2,7 @@
  * Auth routes — "Login with Legendum" OAuth flow + cookie sessions.
  */
 import { Elysia, t } from "elysia";
+import { legendum } from "pues/base/vendor/legendum";
 import {
   LEGENDUM_API_KEY,
   LEGENDUM_BASE_URL,
@@ -9,7 +10,6 @@ import {
   PORT,
 } from "../lib/constants";
 import { createUser, getGlobalDb, getUserByEmail } from "../lib/db";
-import legendum from "../lib/legendum.js";
 import { isByLegendum } from "../lib/mode";
 
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;

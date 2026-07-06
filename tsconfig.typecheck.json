@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "pues/*": ["./types/pues/*", "./pues/*"]
+    }
+  },
+  "include": ["src/**/*", "scripts/**/*", "types/**/*"]
+}

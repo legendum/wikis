@@ -1,0 +1,23 @@
+---
+description: Auto-load Pues framework skills when relevant
+alwaysApply: true
+---
+
+# Pues Framework Skill Autoload
+
+When a request is related to Pues framework code or docs, load the matching skill file(s) before planning or editing.
+
+Treat a request as Pues-related when the user mentions `Pues`/`pues` or the task touches Pues domains such as service bootstrap, auth, billing, objects/resource setup, schema/migrations, or feedback.
+
+Skill files to load:
+- `skills/pues-service-bootstrap/SKILL.md`
+- `skills/pues-db-migrations/SKILL.md`
+- `skills/pues-auth-billing-wiring/SKILL.md`
+- `skills/pues-objects-resource-setup/SKILL.md`
+- `skills/pues-feedback/SKILL.md`
+
+Activation rules:
+- If the mapping is obvious, load only the relevant skill (e.g. `config/migrations/` or `schema.sql` → [[pues-db-migrations]]).
+- If scope spans multiple domains, load each relevant skill.
+- If uncertain, load all five skills before proceeding.
+- Prefer these canonical skill files; if one is missing, fall back to `.cursor/skills/<name>/SKILL.md`.

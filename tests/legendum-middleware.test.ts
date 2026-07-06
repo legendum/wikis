@@ -8,7 +8,7 @@
  * does not apply to link-key).
  */
 import { describe, expect, it } from "bun:test";
-import legendum from "../src/lib/legendum.js";
+import { legendum } from "pues/base/vendor/legendum";
 
 describe("legendum.middleware POST /link-key", () => {
   it("returns 401 without Authorization", async () => {

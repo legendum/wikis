@@ -12,7 +12,9 @@
       "!**/node_modules",
       "!**/dist",
       "!**/build",
-      "!**/legendum.js"
+      "!pues",
+      "!types/pues",
+      "!scripts/pues.ts"
     ]
   },
   "formatter": {

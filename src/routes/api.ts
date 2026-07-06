@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
+import { legendum } from "pues/base/vendor/legendum";
 import {
   extractBearerToken,
   storeAccountKey,
@@ -450,8 +451,6 @@ export const apiRoutes = new Elysia({ prefix: "/api" })
     }
 
     // Validate against Legendum
-    const mod = await import("../lib/legendum.js");
-    const legendum = mod.default || mod;
     try {
       const acct = legendum.account(key);
       const whoami = await acct.whoami();

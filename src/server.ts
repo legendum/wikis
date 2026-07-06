@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { Elysia } from "elysia";
+import { legendum } from "pues/base/vendor/legendum";
 import {
   CONTENT_TYPE_MARKDOWN_UTF8,
   CONTENT_TYPE_TEXT_UTF8,
@@ -8,7 +9,6 @@ import {
   PUBLIC_DIR,
 } from "./lib/constants";
 import { createUser, getGlobalDb } from "./lib/db";
-import legendum from "./lib/legendum.js";
 import { log } from "./lib/log";
 import { apiRoutes } from "./routes/api";
 import { authRoutes } from "./routes/auth";

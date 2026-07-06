@@ -5,6 +5,7 @@
 
 import type { Database } from "bun:sqlite";
 import { type Context, Elysia } from "elysia";
+import { legendum } from "pues/base/vendor/legendum";
 import {
   extractBearerToken,
   validateAccountKey,
@@ -398,8 +399,6 @@ async function fetchBalance(userId: number): Promise<number | null> {
     const { getUserById } = await import("../lib/db");
     const user = getUserById(userId);
     if (!user?.legendum_token) return null;
-    const mod = await import("../lib/legendum.js");
-    const legendum = mod.default || mod;
     if (!legendum.isConfigured()) return null;
     const data = await legendum.balance(user.legendum_token);
     return data.balance ?? null;

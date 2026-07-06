@@ -454,7 +454,7 @@ function button(opts) {
   var href = (opts?.url) || "https://legendum.co.uk/account";
   var label = (opts?.label) || "Buy Credits";
   var target = (opts?.target) || "_blank";
-  return '<a href="' + href + '" target="' + target + '" style="display:inline-flex;align-items:center;gap:0.5rem;background:rgb(88,54,136);color:white;padding:0.6rem 1.2rem;border-radius:4px;text-decoration:none;font-size:1rem;font-family:system-ui,-apple-system,sans-serif;">'
+  return '<a href="' + href + '" target="' + target + '" style="display:inline-flex;align-items:center;gap:0.5rem;background:rgb(17,42,70);color:white;padding:0.6rem 1.2rem;border-radius:4px;text-decoration:none;font-size:1rem;font-family:system-ui,-apple-system,sans-serif;">'
     + '<span style="display:inline-flex;align-items:center;justify-content:center;width:1.5em;height:1.5em;border-radius:50%;background:rgb(88,176,209);color:white;font-weight:bold;font-size:0.9em;">&#x2C60;</span>'
     + label + '</a>';
 }
@@ -500,8 +500,8 @@ function linkWidget(opts) {
 
   return '<div id="' + id + '"></div>'
     + '<style>'
-    + '.' + id + '-btn{display:inline-block;background:rgb(88,54,136);color:white;padding:0.5rem 1rem;border-radius:4px;border:none;font-size:1rem;cursor:pointer;text-decoration:none;font-family:system-ui,-apple-system,sans-serif;}'
-    + '.' + id + '-btn:hover{background:rgb(68,34,116);}'
+    + '.' + id + '-btn{display:inline-block;background:rgb(17,42,70);color:white;padding:0.5rem 1rem;border-radius:4px;border:none;font-size:1rem;cursor:pointer;text-decoration:none;font-family:system-ui,-apple-system,sans-serif;}'
+    + '.' + id + '-btn:hover{background:rgb(11,31,54);}'
     + '.' + id + '-ok{padding:0.75rem 1rem;background:rgba(88,176,209,0.1);border:1px solid rgba(88,176,209,0.4);border-radius:4px;margin-bottom:1rem;}'
     + '.' + id + '-wait{padding:0.75rem 1rem;background:rgba(188,171,122,0.15);border:1px solid rgba(188,171,122,0.4);border-radius:4px;}'
     + '.' + id + '-err{padding:0.75rem 1rem;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;}'

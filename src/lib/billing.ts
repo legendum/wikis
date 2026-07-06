@@ -12,9 +12,12 @@ import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
+import {
+  type LegendumReservation,
+  legendum as legendumSdk,
+} from "pues/base/vendor/legendum";
 import { resolveProvider } from "./ai";
 import { CONFIG_DIR } from "./constants";
-import type { LegendumReservation } from "./legendum.js";
 import { log } from "./log";
 import { isByLegendum } from "./mode";
 
@@ -68,14 +71,9 @@ export function reserveAmount(provider?: string): number {
 
 // --- Legendum integration ---
 
-type LegendumModule = typeof import("./legendum.js").default;
-let legendum: LegendumModule | null = null;
+type LegendumModule = typeof legendumSdk;
 async function getLegendum(): Promise<LegendumModule> {
-  if (!legendum) {
-    const mod = await import("./legendum.js");
-    legendum = mod.default || mod;
-  }
-  return legendum;
+  return legendumSdk;
 }
 
 /** Should we bill this user? Only in hosted mode when user has no own API key. */

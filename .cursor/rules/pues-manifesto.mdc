@@ -1,0 +1,41 @@
+---
+description: The Pues Manifesto — 10 cross-cutting principles for all Pues work
+alwaysApply: true
+---
+
+# The Pues Manifesto
+
+Ten principles that apply to every Pues project — design, code, docs, and
+tooling. They are the shared "why" behind the per-task skills; when a decision
+is unclear, these decide it. They are ordered by precedence: when two collide,
+the higher one wins. (Several are already used as shorthand in code/docs, e.g.
+`STUF`, `POLS`.)
+
+1. **BAIT — Build AI Tools.** Build for agents as first-class users: `--json`,
+   stable exit codes, machine-readable contracts, headless paths alongside the
+   UI. The test: an agent can drive the feature end-to-end from its docs and
+   contracts alone — if it needs a human demonstration, it fails BAIT.
+2. **CEDE — Constrain Every Delegated Executor.** The authenticated human is the
+   trust root with full authority. Delegates acting for them get only the
+   capabilities they need: security by design.
+3. **POLS — Principle Of Least Surprise.** Match what people already know (Git
+   verbs, platform idioms, existing patterns). No silent magic; behaviour
+   should read the way its name promises. Trust is the foundation.
+4. **STUF — Show Them Useful Feedback.** Every failure names what happened and
+   a literally-runnable way to recover. Errors are actionable, never dead ends.
+5. **KISS — Keep It Simple, Stupid.** Prefer the smallest design that works;
+   lean on Bun internals and convention over configuration. The simplest thing
+   that satisfies the above — not simpler.
+6. **DOTE — Do One Thing Excellently.** Each tool, skill, command, and module
+   has one clear job done well — not several jobs done adequately.
+7. **FIAT — Fit It All Together.** The separate repos and parts compose into one
+   coherent whole through shared contracts — a capability built once drops into
+   any consumer, vendored rather than reinvented per repo.
+8. **WACO — We Are Customer One.** Dogfood everything. If it's awkward for us,
+   it ships awkward — fix it where we feel it first.
+9. **DAPP — Document All Pain Points.** When something is rough or a tool can't
+   do X, that's a finding — capture it (an issue/note), don't route around it
+   silently.
+10. **FLOW — Feedback Loops On Workflows.** Tighten the find→fix→ship loop until
+    improvement is the default state. Kaizen as an emergent property of the
+    system, never a scheduled event.
