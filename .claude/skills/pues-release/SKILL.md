@@ -1,12 +1,12 @@
 ---
 name: pues-release
-description: Cut a Pues release with dj — bump package.json, log docs/TAGS.md, dj commit as chore(release), dj tag a v-prefixed tag, push, and dj release publish the notes. Use when tagging a new Pues version so consumers can pin which version they vendored.
+description: Cut a Pues release with dj — bump package.json, log docs/pues/TAGS.md, dj commit as chore(release), dj tag a v-prefixed tag, push, and dj release publish the notes. Use when tagging a new Pues version so consumers can pin which version they vendored.
 ---
 # Pues Release (tagging)
 
 ## Purpose
 Pues is a *peer source* that consumers vendor from `../pues`. A tag is how a
-consumer records which version of Pues it copied (see `docs/AI_PLAN.md` — "cut a
+consumer records which version of Pues it copied (see `docs/pues/AI_PLAN.md` — "cut a
 pues tag at the end of each phase"). This skill is the checklist for cutting one
 consistently. **Pues is dj-managed — drive everything through `dj`, never raw
 `git`/`jj`.** (dj's tags are git tags underneath, but you reach them via `dj
@@ -32,7 +32,7 @@ tag.
    current `package.json` `version` is the last release; bump from there.
    Cross-check `dj release list` (newest published row at the top).
 2. **Bump `package.json`** `version` to match (no `v`).
-3. **Log it in `docs/TAGS.md`** — a new top entry (newest first): the version,
+3. **Log it in `docs/pues/TAGS.md`** — a new top entry (newest first): the version,
    a one-line scope, and 2–4 bullets of what changed. This is the human-readable
    changelog; `dj log` is the full record.
 4. **`bun run smoke` must pass** (lint + test + tsc) before you commit or push.
@@ -72,7 +72,7 @@ You don't do that here — it happens in the consumer repo.
 ## Checklist
 - [ ] `bun run smoke` passes (lint + test + tsc) — never tag a red build.
 - [ ] `package.json` `version` == the tag (minus `v`).
-- [ ] `docs/TAGS.md` has a new top entry for this version.
+- [ ] `docs/pues/TAGS.md` has a new top entry for this version.
 - [ ] Commit is `chore(release): vX.Y.Z — <scope>` with the Co-Authored-By trailer.
 - [ ] `dj tag vX.Y.Z` points at the release commit.
 - [ ] `dj push` + `dj push --tags` done.

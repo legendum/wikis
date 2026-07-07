@@ -16,6 +16,12 @@ add to the `.d.ts` is invisible to consumers — their `tsc` fails with
 `TS2305: Module '"pues/base/<part>"' has no exported member 'X'`. The source and
 the `.d.ts` must move together.
 
+There is a third artifact in that set: the part's consumer-facing contract doc,
+`docs/<PART>.md` (`<PART>` uppercase). It's the one-per-part description of
+what the part provides, its config keys, and how to wire it — so any change to a
+part's public surface must update its doc in the same commit. Source, `.d.ts`,
+and doc move together.
+
 ## Adding a new exported component / hook to an existing part
 1. Write the source in `base/<part>/`.
 2. Export it from the part's **client barrel** `base/<part>/index.ts` (and
@@ -32,6 +38,9 @@ the `.d.ts` must move together.
 5. Styling ships through **`base/style/defaults.css`** (`.pues-*` classes,
    compiled into `pues.css` by `buildStyle`). There is no per-part CSS file; add
    classes there.
+6. **Update the part's doc** `docs/<PART>.md` to reflect the new symbol —
+   add it to `## Provides` (and `## Config` / `## Routes / mounts / interfaces`
+   if it adds a config key or a route). Same commit as the source.
 
 ## Adding a whole new part `base/<name>/`
 - All of the above, plus register the part in **`PUES_MANIFEST`**
@@ -49,6 +58,14 @@ the `.d.ts` must move together.
   want a curated type surface; if you skip it, consumers resolve the part from
   source via the path mapping (works, but loses the loose-`any` insulation —
   `base/cli`/`base/test` do this).
+- **Write the part's doc** `docs/<PART>.md` (uppercase) — one per part, no
+  exceptions. Follow the house template (`## Provides` / *optional* `## Components`
+  / `## Config` / `## Routes / mounts / interfaces` / `## Consume it` / `## Notes`).
+  Add `## Components` only for parts that ship React components — list each with
+  its `*Props` type and a one-line "what it renders", and keep the components out
+  of `## Provides` (which then carries hooks / functions / types only). If a
+  required section is empty, say "None" rather than omitting it — the convention
+  is that a missing doc means an error, not "nothing to say".
 
 ### Server-only route capabilities (`mount*`)
 A capability the host mounts in its request pipeline (`base/webhooks`,
@@ -73,17 +90,19 @@ Pues-owned → prefix them `PUES_`.
 - Then re-vendor a consumer that uses the part (`bun run pues`) and run its
   build + `tsc` — this is what catches a missing `.d.ts` export, since the Pues
   repo's own `tsc` checks source, not the consumer-facing stub.
-- Release with [[../pues-release/SKILL.md|pues-release]] when ready (bump, `docs/TAGS.md`, tag).
+- Release with [[../pues-release/SKILL.md|pues-release]] when ready (bump, `docs/pues/TAGS.md`, tag).
 
 ## Checklist
 - [ ] Source written; exported from `index.ts` (and/or `server.ts`). Server-only
       parts have **no `index.ts`** — `server.ts` only.
 - [ ] Type stub updated to match the barrel: `index.d.ts` for a client surface,
       `server.d.ts` for a server-only one.
+- [ ] `docs/<PART>.md` updated to match the new surface (Provides / Config /
+      Routes) — same commit as the source.
 - [ ] New cross-part imports reflected in `manifest.ts` `depends` (no cycle).
 - [ ] Styling added to `base/style/defaults.css` (not a per-part file).
 - [ ] A mount/route capability exports a route-map factory **or** a
       `mount*(req, path, method, opts?): Promise<Response | null>` matcher.
 - [ ] New env vars are `PUES_`-prefixed (framework-owned config convention).
 - [ ] `bun run smoke` passes; a re-vendored consumer builds + type-checks.
-- [ ] Shipping it? Cut a tag via [[../pues-release/SKILL.md|pues-release]] (bump + `docs/TAGS.md` + `v`-tag).
+- [ ] Shipping it? Cut a tag via [[../pues-release/SKILL.md|pues-release]] (bump + `docs/pues/TAGS.md` + `v`-tag).
