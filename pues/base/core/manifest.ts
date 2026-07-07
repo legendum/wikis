@@ -33,7 +33,7 @@ export const PUES_MANIFEST: Record<string, { depends: Record<string, true> }> =
     health: { depends: { core: true } },
     markdown: { depends: { style: true } },
     meta: { depends: { core: true } },
-    objects: { depends: { core: true, style: true } },
+    objects: { depends: { core: true, sse: true, style: true } },
     pwa: { depends: { core: true, style: true } },
     sse: { depends: { core: true, style: true } },
     style: { depends: {} },

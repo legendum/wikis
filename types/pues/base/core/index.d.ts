@@ -41,7 +41,11 @@ export function bytesToUlid(bytes: Uint8Array): string;
 export function ulidTime(id: string): number;
 
 /** Consumer-app metadata derived from config/pues.yaml at vendor time.
- *  Empty in the pues source tree; populated when vendored into a consumer. */
+ *  Empty in the pues source tree; populated when vendored into a consumer.
+ *  `puesVersion` is the peer pues' package.json version at vendor time
+ *  (lockstep with the release tag) — "which pues is this?" for trees,
+ *  reviews, and runtime surfaces. */
 export const puesAppMeta: {
   readonly name: string;
+  readonly puesVersion: string;
 };

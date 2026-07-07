@@ -33,6 +33,10 @@ reference; WIRING.md is the map.
 - **Never edit the vendored `pues/` tree** — it's a verbatim snapshot,
   overwritten on `bun run pues`. Change pues in the peer `../pues` checkout,
   then re-vendor.
+- `bun run pues repo` re-bootstraps: refreshes `scripts/pues.ts` itself from
+  the peer, then re-vendors — for when the vendoring flow changed, not just
+  the parts.
+- `bun run pues version` prints the vendored pues version (no peer needed).
 
 ---
 *This README is pues-owned and vendored — edit it at `docs/README.md` in

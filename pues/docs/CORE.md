@@ -9,7 +9,8 @@ From `pues/base/core`:
 - `usePuesUser`, `usePuesFetch` — read the `<Pues>` context (current user; the
   resolved fetch, per-call override > context > global)
 - `defaultRoot` / `defaultCoreName` / `resolveCoreName` — checkout root + app name
-- `puesAppMeta` — `{ name }` generated from `config/pues.yaml`
+- `puesAppMeta` — `{ name, puesVersion }` generated at vendor time (`name` from
+  `config/pues.yaml`; `puesVersion` = the vendored pues release)
 - `ulid`, `isUlid`, `ulidTime`, `ULID_RE`, `ulidToBytes`, … — ULID toolkit
 - `puesAuthedFetch` — fetch wrapped with the 401 handler, usable outside React
 - `useOnlineStatus`, `usePageTitle`
