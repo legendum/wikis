@@ -7,6 +7,16 @@ description: Bootstrap a consumer repo to use vendored Pues parts with scripts/p
 ## Goal
 Set up a consumer repo so `bun run pues` vendors parts from sibling `../pues` into committed `pues/` and `types/pues/`.
 
+## Reference: the vendored docs
+`bun run pues` also vendors **`pues/docs/`** — the consumer-facing contract for
+every part you selected: one `pues/docs/<PART>.md` (what it provides, its
+`config/pues.yaml` keys, what it serves, how to wire it), plus
+**`pues/docs/WIRING.md`** (the assembled-service view: a full `server.ts`,
+composite `config/pues.yaml`, `schema.sql`, env vars, and the routes you end up
+serving) and `pues/docs/README.md`. Read the relevant `<PART>.md` before wiring a
+part, and WIRING.md when composing them — an agent or human can use a part from
+its doc alone.
+
 ## Workflow
 1. Confirm topology:
    - Consumer repo and framework repo are siblings.

@@ -47,21 +47,24 @@ Billing lives in `pues/base/billing/server`. Define symbolic names in
 `billing.tabs.<name>` (buffered usage). Never hardcode amounts in handlers.
 
 - One-shot: `await chargeNamed({ accountToken, name: "widget.create" })`.
-- Usage: build the tab once per subject/token, `add` per action, close on shutdown.
-- Normalize: `isInsufficientFunds(r)` → 402; `isTokenInvalid(r)` → clear token + relink.
+- Usage: ONE module-level `createTabsFromConfig` for the process; `add` per
+  action with `subject: userId` and the token read fresh from your DB —
+  never cache tabs by token (it rotates on every re-link), never per request.
+- Normalize: `isInsufficientFunds(r)` → 402; `isTokenInvalid(r)` → 402 relink
+  prompt (the `onTokenInvalid` callback already cleared the stored token).
 
 ```ts
-import { chargeNamed, createTabFromConfig, isInsufficientFunds, isTokenInvalid }
+import { chargeNamed, createTabsFromConfig, isInsufficientFunds, isTokenInvalid }
   from "pues/base/billing/server";
 
-const tab = createTabFromConfig({
-  subject: userId, accountToken, name: "writes",
-  onTokenInvalid: () => clearStoredToken(userId),
+const tabs = createTabsFromConfig({
+  names: ["writes"],
+  onTokenInvalid: (subject) => clearStoredToken(Number(subject)),
 });
-const r = await tab.add();
+const r = await tabs.add({ channel: "writes", subject: userId, accountToken });
 if (isInsufficientFunds(r)) return new Response(null, { status: 402 });
 
-for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => tab.close());
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => tabs.closeAll());
 ```
 
 Billing inside CRUD usually belongs in `beforeInsert`/`beforeUpdate` hooks —
